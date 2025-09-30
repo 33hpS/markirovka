@@ -1,1 +1,8 @@
+#!/usr/bin/env sh
+
+if [ "$SKIP_TESTS" = "1" ]; then
+	echo "[pre-push] SKIP_TESTS=1 -> skipping tests"
+	exit 0
+fi
+
 npx vitest --passWithNoTests
