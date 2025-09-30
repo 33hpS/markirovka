@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const testGlobs = [
@@ -7,12 +7,16 @@ const testGlobs = [
 ];
 
 function findAnyTest() {
-  // Very lightweight: just look for a __tests__ folder or *.test.* file
+  // Look for a __tests__ folder or any *.test.* file recursively (lightweight, no glob lib)
   const patterns = [/\.test\.[jt]sx?$/, /__tests__/i];
-  // We do a shallow heuristic to avoid adding dependencies like fast-glob
+
   function scan(dir) {
-    const fs = require('node:fs');
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return false;
+    }
     for (const e of entries) {
       if (e.name === 'node_modules' || e.name.startsWith('.')) continue;
       const full = join(dir, e.name);
@@ -25,6 +29,7 @@ function findAnyTest() {
     }
     return false;
   }
+
   for (const base of testGlobs) {
     if (existsSync(base) && scan(base)) return true;
   }
