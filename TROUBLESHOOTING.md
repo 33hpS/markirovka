@@ -163,6 +163,82 @@ Before deploying to Cloudflare Pages:
 
 ---
 
+## 🔑 SSH Настройка (Подробно)
+
+Если решено полностью перейти на SSH (рекомендуется для постоянной разработки):
+
+### 1. Генерация ключа
+
+```powershell
+ssh-keygen -t ed25519 -C "your_email@example.com"
+# Нажмите Enter трижды (путь по умолчанию и пустая passphrase)
+```
+
+Файлы: `~/.ssh/id_ed25519` (приватный), `~/.ssh/id_ed25519.pub` (публичный).
+
+### 2. Добавление ключа в ssh-agent (опционально, если используете passphrase)
+
+```powershell
+Start-Service ssh-agent  # (если не запущен)
+ssh-add $HOME/.ssh/id_ed25519
+```
+
+### 3. Добавление ключа на GitHub
+
+```powershell
+Get-Content ~/.ssh/id_ed25519.pub | Set-Clipboard
+```
+
+GitHub → Settings → SSH and GPG keys → New SSH key → вставить → сохранить.
+
+### 4. Проверка соединения
+
+```powershell
+ssh -T git@github.com
+```
+
+Ожидаемо: `Hi USERNAME! You've successfully authenticated...` (может спросить подтверждение
+fingerprint — отвечаем `yes`).
+
+### 5. Смена origin на SSH
+
+```powershell
+git remote set-url origin git@github.com:33hpS/markirovka.git
+git remote -v
+```
+
+Должно стать:
+
+```
+origin  git@github.com:33hpS/markirovka.git (fetch)
+origin  git@github.com:33hpS/markirovka.git (push)
+```
+
+### 6. Тест push
+
+```powershell
+git push origin main
+```
+
+### 7. Возможные проблемы
+
+- `Permission denied (publickey)` → ключ не добавлен или ssh-agent не загрузил.
+- В корпоративной сети: может блокироваться порт 22. Решение — включить SSH через HTTPS: Добавьте в
+  `~/.ssh/config`:
+  ```
+  Host github.com
+     HostName ssh.github.com
+     Port 443
+  ```
+
+### 8. Возврат к HTTPS (если нужно)
+
+```powershell
+git remote set-url origin https://github.com/33hpS/markirovka.git
+```
+
+---
+
 **Status**: All major issues resolved ✅  
 **Ready for deployment**: Yes ✅
 
