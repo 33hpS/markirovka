@@ -7,11 +7,13 @@
 - **Build command**: `npm run build`
 - **Build output directory**: `dist`
 - **Root directory**: `/` (default)
+- **Node.js version**: `20` (required for latest dependencies)
 
 ### Environment Variables
 Set these in Cloudflare Pages dashboard under Settings > Environment variables:
 
 ```
+NODE_VERSION=20
 VITE_API_BASE_URL=https://your-api-domain.com/api
 VITE_APP_TITLE=Маркировочная система
 VITE_PRINT_SERVICE_URL=https://your-print-service.com
@@ -21,10 +23,19 @@ VITE_ALLOWED_FILE_TYPES=image/png,image/jpeg,application/pdf
 ```
 
 ### Node.js Version
-- **Recommended**: `18.x` or `20.x`
-- Set in Cloudflare Pages dashboard under Settings > Environment variables:
-  - Variable name: `NODE_VERSION`
-  - Value: `18` or `20`
+- **Required**: `20.x` (for latest dependencies compatibility)
+- **How to set**: 
+  1. In Cloudflare Pages dashboard under Settings > Environment variables
+  2. Add variable: `NODE_VERSION` = `20`
+  3. Or use `.nvmrc` file (already included in project)
+
+### ⚠️ Important: Disable Workers/Functions
+If Cloudflare Pages tries to run `wrangler deploy`:
+1. Go to your Pages project settings
+2. Navigate to Functions tab
+3. Ensure **"Compatibility flags"** are empty
+4. Set **"Node.js compatibility"** to **"off"**
+5. This project is a **static site only** - no Workers needed
 
 ### Deployment Steps
 1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com/)
