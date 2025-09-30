@@ -2,6 +2,9 @@
 import { existsSync, mkdirSync, writeFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
+// Debug marker to ensure latest script executes in Husky pre-push
+console.log('[ensure-tests] ESM version loaded. Node:', process.version);
+
 const testGlobs = [
   'src',
 ];
