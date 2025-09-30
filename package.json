@@ -5,8 +5,9 @@
   "main": "index.html",
   "type": "module",
   "scripts": {
-    "dev": "node scripts/build.mjs",
-    "build": "node scripts/build.mjs --production",
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "lint:fix": "eslint . --ext ts,tsx --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",
@@ -15,11 +16,14 @@
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest watch",
     "type-check": "tsc --noEmit",
     "prepare": "husky",
     "commit": "cz",
     "commit:retry": "cz --retry",
-    "release": "npm run build && npm run test:run"
+    "release": "npm run build && npm run test:run",
+    "lint-staged": "lint-staged",
+    "commitlint": "commitlint"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.0.1",
