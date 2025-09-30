@@ -159,12 +159,11 @@ export class APIClient {
       method = 'GET',
       body,
       timeout = this.defaultTimeout,
-      requireAuth = true,
     } = config;
 
     const url = this.buildURL(endpoint);
     const headers = this.buildHeaders(config);
-    const controller = createAbortController(timeout);
+    const controller = this.createAbortController(timeout);
 
     const requestInit: RequestInit = {
       method,
@@ -236,11 +235,3 @@ apiClient.addResponseInterceptor(async (response) => {
   }
   return response;
 });
-
-// Utility function to create abort controller with timeout
-function createAbortController(timeout: number): AbortController {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-  controller.signal.addEventListener('abort', () => clearTimeout(timeoutId));
-  return controller;
-}

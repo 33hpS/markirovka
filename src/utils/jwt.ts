@@ -42,7 +42,10 @@ export const tokenStorage = {
 export const jwtUtils = {
   decode: (token: string): JWTPayload | null => {
     try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
+      const parts = token.split('.');
+      if (parts.length !== 3 || !parts[1]) return null;
+      
+      const payload = JSON.parse(atob(parts[1]));
       const result = jwtPayloadSchema.safeParse(payload);
       return result.success ? result.data : null;
     } catch {
@@ -77,7 +80,7 @@ export const jwtUtils = {
 
 // Auto-refresh token utility
 export class TokenRefreshManager {
-  private refreshTimer?: NodeJS.Timeout;
+  private refreshTimer?: ReturnType<typeof setTimeout> | undefined;
   private readonly REFRESH_BUFFER = 5 * 60 * 1000; // 5 minutes before expiry
 
   constructor(private onRefresh: () => Promise<string | null>) {}
