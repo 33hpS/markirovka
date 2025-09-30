@@ -1,1 +1,1 @@
-"npx vitest --passWithNoTests"
+npx vitest --passWithNoTests
