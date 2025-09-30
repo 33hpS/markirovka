@@ -17,6 +17,7 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest watch",
+    "ensure-tests": "node scripts/ensure-tests.mjs",
     "type-check": "tsc --noEmit",
     "prepare": "husky",
     "commit": "cz",

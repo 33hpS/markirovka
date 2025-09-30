@@ -1,0 +1,47 @@
+#!/usr/bin/env node
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const testGlobs = [
+  'src',
+];
+
+function findAnyTest() {
+  // Very lightweight: just look for a __tests__ folder or *.test.* file
+  const patterns = [/\.test\.[jt]sx?$/, /__tests__/i];
+  // We do a shallow heuristic to avoid adding dependencies like fast-glob
+  function scan(dir) {
+    const fs = require('node:fs');
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const e of entries) {
+      if (e.name === 'node_modules' || e.name.startsWith('.')) continue;
+      const full = join(dir, e.name);
+      if (e.isDirectory()) {
+        if (patterns[1].test(e.name)) return true;
+        if (scan(full)) return true;
+      } else if (patterns[0].test(e.name)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  for (const base of testGlobs) {
+    if (existsSync(base) && scan(base)) return true;
+  }
+  return false;
+}
+
+if (findAnyTest()) {
+  console.log('[ensure-tests] At least one test file present.');
+  process.exit(0);
+}
+
+const testDir = join('src', '__tests__');
+if (!existsSync(testDir)) mkdirSync(testDir, { recursive: true });
+const smokePath = join(testDir, 'smoke.test.tsx');
+if (!existsSync(smokePath)) {
+  writeFileSync(smokePath, `import { describe, it, expect } from 'vitest';\nimport { render } from '@testing-library/react';\nimport App from '../App';\n\ndescribe('App smoke test', () => {\n  it('renders without crashing', () => {\n    render(<App />);\n    expect(document.body.innerHTML.length).toBeGreaterThan(0);\n  });\n});\n`);
+  console.log('[ensure-tests] Created smoke test at', smokePath);
+} else {
+  console.log('[ensure-tests] Smoke test already exists.');
+}

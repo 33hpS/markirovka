@@ -5,4 +5,5 @@ if [ "$SKIP_TESTS" = "1" ]; then
 	exit 0
 fi
 
+npx --yes node scripts/ensure-tests.mjs
 npx vitest --passWithNoTests
