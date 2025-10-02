@@ -70,7 +70,9 @@ export default {
             response.body,
             new Response(response).headers
           );
-          response.headers.set('cache-control', 'public, max-age=60');
+          // Make HTML effectively uncacheable so new deployments show instantly
+          response.headers.set('cache-control', 'no-store, must-revalidate');
+          response.headers.set('cf-deploy-hint', Date.now().toString());
         }
         // Add common security headers to all successful direct hits
         response = withSecurityHeaders(response, url);
