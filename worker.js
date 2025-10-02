@@ -78,6 +78,34 @@ export default {
         });
       }
 
+      // Special handling for known SPA routes - serve index.html immediately
+      const knownSpaRoutes = [
+        '/production',
+        '/designer',
+        '/reports',
+        '/users',
+        '/labels',
+        '/printing',
+        '/login',
+        '/docs',
+      ];
+      if (knownSpaRoutes.includes(url.pathname)) {
+        console.log(
+          '[worker] Known SPA route, serving index.html directly:',
+          url.pathname
+        );
+        const indexReq = new Request(new URL('/index.html', url), request);
+        const indexResp = await env.ASSETS.fetch(indexReq);
+        if (indexResp.ok) {
+          const spaResponse = new Response(indexResp.body, {
+            status: 200,
+            headers: new Headers(indexResp.headers),
+          });
+          spaResponse.headers.set('cache-control', 'no-store, must-revalidate');
+          return withSecurityHeaders(spaResponse, url);
+        }
+      }
+
       // First try to serve the exact asset
       let response = await env.ASSETS.fetch(request);
 
@@ -108,31 +136,42 @@ export default {
         return response;
       }
 
-      // If client error (4xx) and looks like a SPA route (no dot in last path segment), fallback to index.html
-      // Some edge cases return 400 with body 'Invalid URL' instead of a 404; we still want to serve the SPA shell.
-      if (
-        (response.status === 404 ||
-          (response.status >= 400 && response.status < 500)) &&
-        shouldSpaFallback(url, noFallbackList)
-      ) {
-        const originalStatus = response.status;
-        const indexReq = new Request(new URL('/index.html', url), request);
-        const indexResp = await env.ASSETS.fetch(indexReq);
-        if (indexResp.ok) {
-          console.log('[worker] SPA fallback -> /index.html', {
-            path: url.pathname,
-            originalStatus,
-          });
-          return new Response(indexResp.body, {
-            status: 200,
-            headers: indexResp.headers,
-          });
-        } else {
-          console.warn('[worker] Fallback failed', {
-            path: url.pathname,
-            originalStatus,
-            fallbackStatus: indexResp.status,
-          });
+      // SPA fallback: for any failed asset request that looks like a SPA route
+      const shouldFallback = shouldSpaFallback(url, noFallbackList);
+      console.log(
+        '[worker] Asset failed, shouldFallback:',
+        shouldFallback,
+        'status:',
+        response.status
+      );
+
+      if (shouldFallback) {
+        console.log('[worker] Attempting SPA fallback for:', url.pathname);
+
+        try {
+          const indexReq = new Request(new URL('/index.html', url), request);
+          const indexResp = await env.ASSETS.fetch(indexReq);
+
+          if (indexResp.ok) {
+            console.log('[worker] SPA fallback SUCCESS');
+            const spaResponse = new Response(indexResp.body, {
+              status: 200,
+              headers: new Headers(indexResp.headers),
+            });
+            // Set no-cache for SPA routes to ensure fresh content
+            spaResponse.headers.set(
+              'cache-control',
+              'no-store, must-revalidate'
+            );
+            return withSecurityHeaders(spaResponse, url);
+          } else {
+            console.error(
+              '[worker] index.html fetch failed:',
+              indexResp.status
+            );
+          }
+        } catch (err) {
+          console.error('[worker] SPA fallback error:', err);
         }
       }
       return withSecurityHeaders(response, url);
@@ -148,12 +187,34 @@ export default {
 
 function shouldSpaFallback(url, noFallbackList) {
   const pathname = url.pathname;
-  if (pathname === '/') return false; // root already served
-  if (noFallbackList.includes(pathname)) return false;
+  console.log('[worker] shouldSpaFallback check:', {
+    pathname,
+    noFallbackList,
+  });
+
+  if (pathname === '/') {
+    console.log('[worker] Skip root');
+    return false; // root already served
+  }
+
+  if (noFallbackList.includes(pathname)) {
+    console.log('[worker] In no-fallback list');
+    return false;
+  }
+
   const last = pathname.split('/').pop();
   const looksLikeFile = last && last.includes('.');
-  if (looksLikeFile) return false;
-  if (pathname.startsWith('/api')) return false;
+  if (looksLikeFile) {
+    console.log('[worker] Looks like file:', last);
+    return false;
+  }
+
+  if (pathname.startsWith('/api')) {
+    console.log('[worker] API route');
+    return false;
+  }
+
+  console.log('[worker] Should fallback to SPA');
   return true;
 }
 
