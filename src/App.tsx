@@ -1,46 +1,12 @@
 import * as React from 'react';
 
-const Badge = ({
-  children,
-  color,
-}: {
-  children: React.ReactNode;
-  color?: string;
-}) => {
-  const palette: Record<string, string> = {
-    green: 'bg-green-100 text-green-800',
-    blue: 'bg-blue-100 text-blue-800',
-    purple: 'bg-purple-100 text-purple-800',
-    yellow: 'bg-yellow-100 text-yellow-800',
-    gray: 'bg-gray-100 text-gray-800',
-    red: 'bg-red-100 text-red-800',
-    indigo: 'bg-indigo-100 text-indigo-800',
-  };
-  return (
-    <span
-      className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${palette[color ?? 'gray']}`}
-    >
-      {children}
-    </span>
-  );
-};
-
-const SectionCard: React.FC<{ title: string; children: React.ReactNode }> = ({
-  title,
-  children,
-}) => (
-  <div className='p-4 rounded-lg border bg-white shadow-sm hover:shadow transition-shadow'>
-    <h3 className='font-semibold mb-2 text-gray-900 text-sm tracking-wide'>
-      {title}
-    </h3>
-    <div className='text-xs text-gray-600 leading-relaxed space-y-1'>
-      {children}
-    </div>
-  </div>
-);
+import Badge from './components/ui/Badge';
+import SectionCard from './components/ui/SectionCard';
+import { useBuildInfo } from './hooks/useBuildInfo';
 
 const App: React.FC = () => {
   const year = new Date().getFullYear();
+  const { data: build, loading: buildLoading } = useBuildInfo();
   return (
     <div className='min-h-screen bg-gradient-to-b from-gray-50 via-white to-gray-100 flex flex-col'>
       <header className='w-full border-b bg-white/70 backdrop-blur sticky top-0 z-10'>
@@ -49,7 +15,7 @@ const App: React.FC = () => {
             <span className='text-xl font-bold tracking-tight text-gray-900'>
               Маркировка
             </span>
-            <Badge color='indigo'>v1.0.0</Badge>
+            <Badge color='indigo'>{build?.version ?? 'v1.0.0'}</Badge>
             <Badge color='green'>Stable</Badge>
           </div>
           <nav className='hidden md:flex items-center space-x-6 text-sm text-gray-600'>
@@ -199,14 +165,22 @@ const App: React.FC = () => {
             <Badge color='purple'>Caching</Badge>
             <Badge color='blue'>SPA</Badge>
           </span>
-          <a
-            href='https://github.com/33hpS/markirovka'
-            className='hover:text-gray-700'
-            target='_blank'
-            rel='noreferrer'
-          >
-            GitHub
-          </a>
+          <span className='flex items-center gap-3'>
+            {buildLoading && <Badge color='gray'>build...</Badge>}
+            {build && (
+              <Badge color='indigo'>
+                {build.version} · {build.commit.slice(0, 7)}
+              </Badge>
+            )}
+            <a
+              href='https://github.com/33hpS/markirovka'
+              className='hover:text-gray-700'
+              target='_blank'
+              rel='noreferrer'
+            >
+              GitHub
+            </a>
+          </span>
         </div>
       </footer>
     </div>
