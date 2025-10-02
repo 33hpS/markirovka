@@ -1,0 +1,9 @@
+name = "markirovka"
+main = "worker.js"
+compatibility_date = "2025-09-30"
+
+[assets]
+# Directory with the static build output produced by `npm run build`
+directory = "dist"
+# Binding name used in the worker.js fetch handler
+binding = "ASSETS"
