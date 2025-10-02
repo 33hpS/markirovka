@@ -28,7 +28,9 @@ const Layout: React.FC = () => {
             >
               Маркировка
             </NavLink>
-            <Badge color='indigo'>{build?.version ?? 'v1.0.0'}</Badge>
+            <Badge color='indigo'>
+              {build && build.version !== 'unknown' ? build.version : 'v1.0.0'}
+            </Badge>
             <Badge color='green'>Stable</Badge>
           </div>
           <nav className='hidden md:flex items-center gap-4 text-sm'>
@@ -46,11 +48,7 @@ const Layout: React.FC = () => {
                 end
               >
                 {item.label}
-                {item.protected && (
-                  <span className='ml-1 text-[10px] uppercase tracking-wide text-indigo-500'>
-                    auth
-                  </span>
-                )}
+                {/* auth badge removed for protected routes */}
               </NavLink>
             ))}
           </nav>
@@ -69,10 +67,12 @@ const Layout: React.FC = () => {
           </span>
           <span className='flex items-center gap-3'>
             {loading && <Badge color='gray'>build...</Badge>}
-            {build && (
+            {build && build.version !== 'unknown' && build.commit ? (
               <Badge color='indigo'>
                 {build.version} · {build.commit.slice(0, 7)}
               </Badge>
+            ) : (
+              <Badge color='indigo'>v1.0.0</Badge>
             )}
             <a
               href='https://github.com/33hpS/markirovka'
