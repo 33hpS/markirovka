@@ -1,4 +1,15 @@
-node_modules/
+node_modules
+dist
+coverage
+.vite
+.vitest
+build
+.cache
+*.log
+*.tgz
+*.lock
+reports
+public/buildnode_modules/
 dist/
 build/
 coverage/

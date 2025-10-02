@@ -24,7 +24,8 @@
     "commit:retry": "cz --retry",
     "release": "npm run build && npm run test:run",
     "lint-staged": "lint-staged",
-    "commitlint": "commitlint"
+    "commitlint": "commitlint",
+    "format:staged": "lint-staged"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.0.1",
