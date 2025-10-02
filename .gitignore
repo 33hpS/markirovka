@@ -1,4 +1,5 @@
-# node_modules
+node_modules/
+# (Added by automation) Ensure dependencies are not tracked
 dist
 .env.local
 .env.production
