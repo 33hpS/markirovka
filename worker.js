@@ -79,17 +79,31 @@ export default {
         return response;
       }
 
-      // If 404 and looks like a SPA route (no dot in last path segment), fallback to index.html
-      if (response.status === 404 && shouldSpaFallback(url, noFallbackList)) {
+      // If client error (4xx) and looks like a SPA route (no dot in last path segment), fallback to index.html
+      // Some edge cases return 400 with body 'Invalid URL' instead of a 404; we still want to serve the SPA shell.
+      if (
+        (response.status === 404 ||
+          (response.status >= 400 && response.status < 500)) &&
+        shouldSpaFallback(url, noFallbackList)
+      ) {
+        const originalStatus = response.status;
         const indexReq = new Request(new URL('/index.html', url), request);
         const indexResp = await env.ASSETS.fetch(indexReq);
         if (indexResp.ok) {
           console.log('[worker] SPA fallback -> /index.html', {
             path: url.pathname,
+            originalStatus,
           });
-          return indexResp;
+          return new Response(indexResp.body, {
+            status: 200,
+            headers: indexResp.headers,
+          });
         } else {
-          console.warn('[worker] Fallback also 404', { path: url.pathname });
+          console.warn('[worker] Fallback failed', {
+            path: url.pathname,
+            originalStatus,
+            fallbackStatus: indexResp.status,
+          });
         }
       }
       return withSecurityHeaders(response, url);
