@@ -94,14 +94,20 @@ export default {
           '[worker] Known SPA route, serving index.html directly:',
           url.pathname
         );
-        const indexReq = new Request(new URL('/index.html', url), request);
+        // Try root path instead of /index.html to avoid redirect issues
+        const indexReq = new Request(new URL('/', url), request);
         const indexResp = await env.ASSETS.fetch(indexReq);
         if (indexResp.ok) {
           const spaResponse = new Response(indexResp.body, {
             status: 200,
             headers: new Headers(indexResp.headers),
           });
-          spaResponse.headers.set('cache-control', 'no-store, must-revalidate');
+          spaResponse.headers.set(
+            'cache-control',
+            'no-store, must-revalidate, no-cache'
+          );
+          spaResponse.headers.set('pragma', 'no-cache');
+          spaResponse.headers.set('expires', '0');
           return withSecurityHeaders(spaResponse, url);
         }
       }
@@ -149,7 +155,7 @@ export default {
         console.log('[worker] Attempting SPA fallback for:', url.pathname);
 
         try {
-          const indexReq = new Request(new URL('/index.html', url), request);
+          const indexReq = new Request(new URL('/', url), request);
           const indexResp = await env.ASSETS.fetch(indexReq);
 
           if (indexResp.ok) {
