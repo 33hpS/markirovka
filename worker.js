@@ -34,12 +34,41 @@ export default {
       }
 
       // Version endpoint: relies on env.COMMIT_SHA and env.PKG_VERSION (configured in deployment)
+      // Fallback to version.json if env vars not available
       if (url.pathname === '/version') {
-        const body = JSON.stringify({
+        let versionData = {
           commit: env.COMMIT_SHA || 'unknown',
           version: env.PKG_VERSION || 'unknown',
           time: new Date().toISOString(),
-        });
+          source: 'env',
+        };
+
+        // If env vars missing, try fallback to version.json
+        if (
+          versionData.commit === 'unknown' ||
+          versionData.version === 'unknown'
+        ) {
+          try {
+            const versionJsonReq = new Request(
+              new URL('/version.json', url),
+              request
+            );
+            const versionJsonResp = await env.ASSETS.fetch(versionJsonReq);
+            if (versionJsonResp.ok) {
+              const fallbackData = await versionJsonResp.json();
+              versionData = {
+                ...fallbackData,
+                time: new Date().toISOString(), // Always current timestamp
+                source: fallbackData.source || 'fallback',
+              };
+              console.log('[worker] Using version.json fallback', versionData);
+            }
+          } catch (err) {
+            console.warn('[worker] version.json fallback failed', err);
+          }
+        }
+
+        const body = JSON.stringify(versionData);
         return new Response(body, {
           status: 200,
           headers: {
