@@ -2,41 +2,10 @@ import * as React from 'react';
 
 import Badge from './components/ui/Badge';
 import SectionCard from './components/ui/SectionCard';
-import { useBuildInfo } from './hooks/useBuildInfo';
 
 const App: React.FC = () => {
-  const year = new Date().getFullYear();
-  const { data: build, loading: buildLoading } = useBuildInfo();
   return (
-    <div className='min-h-screen bg-gradient-to-b from-gray-50 via-white to-gray-100 flex flex-col'>
-      <header className='w-full border-b bg-white/70 backdrop-blur sticky top-0 z-10'>
-        <div className='mx-auto max-w-5xl px-6 py-4 flex items-center justify-between'>
-          <div className='flex items-center space-x-3'>
-            <span className='text-xl font-bold tracking-tight text-gray-900'>
-              Маркировка
-            </span>
-            <Badge color='indigo'>{build?.version ?? 'v1.0.0'}</Badge>
-            <Badge color='green'>Stable</Badge>
-          </div>
-          <nav className='hidden md:flex items-center space-x-6 text-sm text-gray-600'>
-            <a href='#features' className='hover:text-gray-900'>
-              Функции
-            </a>
-            <a href='#modules' className='hover:text-gray-900'>
-              Модули
-            </a>
-            <a href='#tech' className='hover:text-gray-900'>
-              Стек
-            </a>
-            <a href='#status' className='hover:text-gray-900'>
-              Статус
-            </a>
-            <a href='/docs' className='hover:text-gray-900'>
-              Документация
-            </a>
-          </nav>
-        </div>
-      </header>
+    <div className='pb-20'>
       <main className='flex-1'>
         <section className='py-16' id='hero'>
           <div className='mx-auto max-w-5xl px-6 text-center'>
@@ -157,32 +126,6 @@ const App: React.FC = () => {
           </div>
         </section>
       </main>
-      <footer className='border-t bg-white'>
-        <div className='mx-auto max-w-5xl px-6 py-6 text-xs text-gray-500 flex flex-col sm:flex-row items-center justify-between gap-3'>
-          <span>© {year} Маркировочная система</span>
-          <span className='flex items-center gap-2'>
-            <Badge color='green'>CI Active</Badge>
-            <Badge color='purple'>Caching</Badge>
-            <Badge color='blue'>SPA</Badge>
-          </span>
-          <span className='flex items-center gap-3'>
-            {buildLoading && <Badge color='gray'>build...</Badge>}
-            {build && (
-              <Badge color='indigo'>
-                {build.version} · {build.commit.slice(0, 7)}
-              </Badge>
-            )}
-            <a
-              href='https://github.com/33hpS/markirovka'
-              className='hover:text-gray-700'
-              target='_blank'
-              rel='noreferrer'
-            >
-              GitHub
-            </a>
-          </span>
-        </div>
-      </footer>
     </div>
   );
 };

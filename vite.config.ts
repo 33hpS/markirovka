@@ -1,5 +1,5 @@
 /// <reference types="vitest" />
-import path from 'path';
+import * as path from 'path';
 
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
@@ -24,6 +24,8 @@ export default defineConfig({
           vendor: ['react', 'react-dom'],
           router: ['react-router-dom'],
           ui: ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu'],
+          reports: ['recharts'],
+          auth: ['jsonwebtoken'],
         },
       },
     },

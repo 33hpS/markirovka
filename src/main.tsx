@@ -2,6 +2,9 @@ import * as React from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
+import Layout from './layout/Layout';
+import ProtectedRoute from './routes/ProtectedRoute';
+
 // Lazy loaded pages for code-splitting
 const App = React.lazy(() => import('./App'));
 const Docs = React.lazy(() => import('./Docs'));
@@ -29,16 +32,20 @@ root.render(
         fallback={<div className='p-6 text-sm text-gray-500'>Загрузка...</div>}
       >
         <Routes>
-          <Route path='/' element={<App />} />
-          <Route path='/docs' element={<Docs />} />
-          <Route path='/production' element={<Production />} />
-          <Route path='/designer' element={<Designer />} />
-          <Route path='/labels' element={<Labels />} />
-          <Route path='/printing' element={<Printing />} />
-          <Route path='/reports' element={<Reports />} />
-          <Route path='/users' element={<Users />} />
-          <Route path='/login' element={<Login />} />
-          <Route path='*' element={<Navigate to='/' replace />} />
+          <Route element={<Layout />}>
+            <Route path='/' element={<App />} />
+            <Route path='/docs' element={<Docs />} />
+            <Route element={<ProtectedRoute />}>
+              <Route path='/production' element={<Production />} />
+              <Route path='/users' element={<Users />} />
+            </Route>
+            <Route path='/designer' element={<Designer />} />
+            <Route path='/labels' element={<Labels />} />
+            <Route path='/printing' element={<Printing />} />
+            <Route path='/reports' element={<Reports />} />
+            <Route path='/login' element={<Login />} />
+            <Route path='*' element={<Navigate to='/' replace />} />
+          </Route>
         </Routes>
       </React.Suspense>
     </BrowserRouter>

@@ -1,12 +1,30 @@
 import * as React from 'react';
 
-const Designer: React.FC = () => (
-  <div className='p-8'>
-    <h1 className='text-2xl font-bold mb-4'>Дизайнер этикеток (WIP)</h1>
-    <p className='text-sm text-gray-600 max-w-prose'>
-      Графический редактор шаблонов: canvas, слои, шрифты, QR/штрих-коды.
-    </p>
-  </div>
-);
+const Designer: React.FC = () => {
+  return (
+    <div className='p-8'>
+      <h1 className='text-2xl font-bold mb-4'>Дизайнер этикеток (WIP)</h1>
+      <p className='text-sm text-gray-600 max-w-prose'>
+        Графический редактор шаблонов: canvas, слои, шрифты, QR/штрих-коды.
+      </p>
+      <div className='mt-6 space-y-3'>
+        <h2 className='text-sm font-semibold tracking-wide text-gray-700 uppercase'>
+          Roadmap
+        </h2>
+        <ul className='list-disc pl-5 text-xs text-gray-600 space-y-1'>
+          <li>Слои и порядок</li>
+          <li>Инспектор свойств</li>
+          <li>Привязка данных</li>
+          <li>Предпросмотр печати</li>
+        </ul>
+        <div className='mt-4 grid grid-cols-3 gap-2'>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className='h-12 rounded bg-gray-100 animate-pulse' />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default Designer;
