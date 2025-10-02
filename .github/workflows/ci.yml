@@ -120,6 +120,25 @@ jobs:
             sleep 2
           done
           echo "Timeout waiting for /health"; exit 1
+      - name: Verify deployed commit
+        run: |
+          URL="${{ steps.base.outputs.url }}"
+          echo "Checking /version matches current commit";
+          for i in {1..20}; do
+            body=$(curl -s "$URL/version" || true)
+            echo "Attempt $i: $body";
+            commit=$(echo "$body" | jq -r '.commit // empty')
+            if [ -n "$commit" ] && [ "$commit" != "unknown" ]; then
+              shortLocal="${GITHUB_SHA:0:7}"; shortRemote="${commit:0:7}";
+              if [ "$shortLocal" = "$shortRemote" ]; then
+                echo "Commit match: $shortRemote"; exit 0;
+              else
+                echo "Mismatch (local $shortLocal vs remote $shortRemote)";
+              fi
+            fi
+            sleep 3
+          done
+          echo "Failed to verify deployed commit"; exit 1
       - name: Run Playwright smoke (chromium only)
         run: npx playwright test --project=chromium --grep "Landing page"
         env:
