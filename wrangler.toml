@@ -1,6 +1,7 @@
 name = "markirovka"
 main = "worker.js"
 compatibility_date = "2025-09-30"
+preview_urls = true
 
 [assets]
 # Directory with the static build output produced by `npm run build`

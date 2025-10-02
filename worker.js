@@ -15,74 +15,89 @@ export default {
    */
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    try {
+      // Pre-parse no-fallback list (cached across requests because module scope)
+      if (!globalThis.__NO_FALLBACK) {
+        globalThis.__NO_FALLBACK = (env.NO_FALLBACK_PATHS || '')
+          .split(',')
+          .map(p => p.trim())
+          .filter(Boolean);
+      }
+      const noFallbackList = globalThis.__NO_FALLBACK;
 
-    // Pre-parse no-fallback list (cached across requests because module scope)
-    if (!globalThis.__NO_FALLBACK) {
-      globalThis.__NO_FALLBACK = (env.NO_FALLBACK_PATHS || '')
-        .split(',')
-        .map(p => p.trim())
-        .filter(Boolean);
-    }
-    const noFallbackList = globalThis.__NO_FALLBACK;
+      // Health endpoint (cheap, no asset fetch)
+      if (url.pathname === '/health') {
+        return new Response('ok', {
+          status: 200,
+          headers: { 'content-type': 'text/plain' },
+        });
+      }
 
-    // Health endpoint (cheap, no asset fetch)
-    if (url.pathname === '/health') {
-      return new Response('ok', {
-        status: 200,
+      // Version endpoint: relies on env.COMMIT_SHA and env.PKG_VERSION (configured in deployment)
+      if (url.pathname === '/version') {
+        const body = JSON.stringify({
+          commit: env.COMMIT_SHA || 'unknown',
+          version: env.PKG_VERSION || 'unknown',
+          time: new Date().toISOString(),
+        });
+        return new Response(body, {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+            'cache-control': 'no-store',
+          },
+        });
+      }
+
+      // First try to serve the exact asset
+      let response = await env.ASSETS.fetch(request);
+
+      // Apply caching strategy for successful static asset hits
+      if (response.ok) {
+        const path = url.pathname;
+        // Heuristic: hashed assets (e.g. chunk.[hash].js/css) -> immutable
+        if (/\.[a-f0-9]{8,}\.[a-z0-9]+$/i.test(path)) {
+          response = new Response(
+            response.body,
+            new Response(response).headers
+          );
+          response.headers.set(
+            'cache-control',
+            'public, max-age=31536000, immutable'
+          );
+        } else if (path === '/' || path.endsWith('.html')) {
+          response = new Response(
+            response.body,
+            new Response(response).headers
+          );
+          response.headers.set('cache-control', 'public, max-age=60');
+        }
+        // Add common security headers to all successful direct hits
+        response = withSecurityHeaders(response, url);
+        return response;
+      }
+
+      // If 404 and looks like a SPA route (no dot in last path segment), fallback to index.html
+      if (response.status === 404 && shouldSpaFallback(url, noFallbackList)) {
+        const indexReq = new Request(new URL('/index.html', url), request);
+        const indexResp = await env.ASSETS.fetch(indexReq);
+        if (indexResp.ok) {
+          console.log('[worker] SPA fallback -> /index.html', {
+            path: url.pathname,
+          });
+          return indexResp;
+        } else {
+          console.warn('[worker] Fallback also 404', { path: url.pathname });
+        }
+      }
+      return withSecurityHeaders(response, url);
+    } catch (err) {
+      captureError(err, env);
+      return new Response('Internal Error', {
+        status: 500,
         headers: { 'content-type': 'text/plain' },
       });
     }
-
-    // Version endpoint: relies on env.COMMIT_SHA and env.PKG_VERSION (configured in deployment)
-    if (url.pathname === '/version') {
-      const body = JSON.stringify({
-        commit: env.COMMIT_SHA || 'unknown',
-        version: env.PKG_VERSION || 'unknown',
-        time: new Date().toISOString(),
-      });
-      return new Response(body, {
-        status: 200,
-        headers: {
-          'content-type': 'application/json',
-          'cache-control': 'no-store',
-        },
-      });
-    }
-
-    // First try to serve the exact asset
-    let response = await env.ASSETS.fetch(request);
-
-    // Apply caching strategy for successful static asset hits
-    if (response.ok) {
-      const path = url.pathname;
-      // Heuristic: hashed assets (e.g. chunk.[hash].js/css) -> immutable
-      if (/\.[a-f0-9]{8,}\.[a-z0-9]+$/i.test(path)) {
-        response = new Response(response.body, new Response(response).headers);
-        response.headers.set(
-          'cache-control',
-          'public, max-age=31536000, immutable'
-        );
-      } else if (path === '/' || path.endsWith('.html')) {
-        response = new Response(response.body, new Response(response).headers);
-        response.headers.set('cache-control', 'public, max-age=60');
-      }
-      return response;
-    }
-
-    // If 404 and looks like a SPA route (no dot in last path segment), fallback to index.html
-    if (response.status === 404 && shouldSpaFallback(url, noFallbackList)) {
-      const indexReq = new Request(new URL('/index.html', url), request);
-      const indexResp = await env.ASSETS.fetch(indexReq);
-      if (indexResp.ok) {
-        console.log('[worker] SPA fallback -> /index.html', {
-          path: url.pathname,
-        });
-        return indexResp;
-      } else {
-        console.warn('[worker] Fallback also 404', { path: url.pathname });
-      }
-    }
-    return response;
   },
 };
 
@@ -114,4 +129,52 @@ function captureError(err, env) {
   } catch (e) {
     console.error('[worker:error:send-failed]', e);
   }
+}
+
+function withSecurityHeaders(resp, url) {
+  const headers = new Headers(resp.headers);
+  // Basic security hardening
+  headers.set('x-content-type-options', 'nosniff');
+  headers.set('referrer-policy', 'strict-origin-when-cross-origin');
+  headers.set('x-frame-options', 'DENY');
+  headers.set('x-xss-protection', '0'); // modern browsers rely on CSP
+  headers.set('permissions-policy', 'geolocation=(), microphone=(), camera=()');
+  // Simple CSP (adjust later): allow self + inline styles (Tailwind JIT) & data images
+  headers.set(
+    'content-security-policy',
+    [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data:",
+      "font-src 'self' data:",
+      "connect-src 'self'",
+      "object-src 'none'",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+    ].join('; ')
+  );
+  // Prefetch hints for SPA main bundle if we can infer hashed main files
+  const pathname = url.pathname;
+  if (pathname === '/' || pathname.endsWith('index.html')) {
+    // Heuristic: prefetch vendor + main chunks
+    // These Link headers are advisory; adjust when filenames change
+    headers.append(
+      'Link',
+      '</assets/vendor-cxkclgJA.js>; rel=preload; as=script'
+    );
+    headers.append(
+      'Link',
+      '</assets/index-B2SJnuOB.js>; rel=preload; as=script'
+    );
+    headers.append(
+      'Link',
+      '</assets/index-B89X4AwN.css>; rel=preload; as=style'
+    );
+  }
+  return new Response(resp.body, {
+    status: resp.status,
+    statusText: resp.statusText,
+    headers,
+  });
 }
