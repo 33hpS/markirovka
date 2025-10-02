@@ -118,28 +118,39 @@ export default {
       // Apply caching strategy for successful static asset hits
       if (response.ok) {
         const path = url.pathname;
+
+        // Create new response with correct headers
+        const newResponse = new Response(response.body, response);
+
+        // Always set correct Content-Type based on file extension
+        if (path.endsWith('.css')) {
+          newResponse.headers.set('content-type', 'text/css; charset=utf-8');
+        } else if (path.endsWith('.js')) {
+          newResponse.headers.set(
+            'content-type',
+            'application/javascript; charset=utf-8'
+          );
+        } else if (path.endsWith('.json')) {
+          newResponse.headers.set(
+            'content-type',
+            'application/json; charset=utf-8'
+          );
+        }
+
         // Heuristic: hashed assets (e.g. chunk.[hash].js/css) -> immutable
         if (/\.[a-f0-9]{8,}\.[a-z0-9]+$/i.test(path)) {
-          response = new Response(
-            response.body,
-            new Response(response).headers
-          );
-          response.headers.set(
+          newResponse.headers.set(
             'cache-control',
             'public, max-age=31536000, immutable'
           );
         } else if (path === '/' || path.endsWith('.html')) {
-          response = new Response(
-            response.body,
-            new Response(response).headers
-          );
           // Make HTML effectively uncacheable so new deployments show instantly
-          response.headers.set('cache-control', 'no-store, must-revalidate');
-          response.headers.set('cf-deploy-hint', Date.now().toString());
+          newResponse.headers.set('cache-control', 'no-store, must-revalidate');
+          newResponse.headers.set('cf-deploy-hint', Date.now().toString());
         }
+
         // Add common security headers to all successful direct hits
-        response = withSecurityHeaders(response, url);
-        return response;
+        return withSecurityHeaders(newResponse, url);
       }
 
       // SPA fallback: for any failed asset request that looks like a SPA route
