@@ -1,7 +1,10 @@
 /// <reference types="vitest" />
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
 import path from 'path';
+
+import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vite';
+
+const isStaging = process.env.STAGING === 'true';
 
 export default defineConfig({
   plugins: [react()],
@@ -12,7 +15,7 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: false,
+    sourcemap: isStaging,
     minify: 'esbuild',
     target: 'es2020',
     rollupOptions: {

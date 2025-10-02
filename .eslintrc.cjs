@@ -16,7 +16,7 @@ module.exports = {
     'plugin:import/typescript',
     'prettier'
   ],
-  ignorePatterns: ['dist', '.eslintrc.cjs', 'node_modules', 'coverage', 'scripts/ensure-tests.mjs', 'worker.js'],
+  ignorePatterns: ['dist', '.eslintrc.cjs', 'node_modules', 'coverage', 'scripts/ensure-tests.mjs', 'worker.js', 'playwright.config.ts', 'e2e/**/*'],
   parser: '@typescript-eslint/parser',
   parserOptions: {
     ecmaVersion: 'latest',
