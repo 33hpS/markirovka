@@ -72,19 +72,13 @@ jobs:
           cache: npm
       - name: Install deps (prod + wrangler)
         run: npm ci --omit=dev=false
-      - name: Export build metadata
-        run: |
-          echo "COMMIT_SHA=${GITHUB_SHA}" >> $GITHUB_ENV
-          echo "PKG_VERSION=$(node -p \"require('./package.json').version\")" >> $GITHUB_ENV
       - name: Build (assets)
         run: npm run build
         env:
           STAGING: 'false'
-      - name: Wrangler deploy
-        run: npx wrangler deploy --var COMMIT_SHA=${COMMIT_SHA} --var PKG_VERSION=${PKG_VERSION}
+      - name: Deploy with metadata
+        run: npm run deploy:worker
         env:
-          COMMIT_SHA: ${{ env.COMMIT_SHA }}
-          PKG_VERSION: ${{ env.PKG_VERSION }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Debug deployed version
