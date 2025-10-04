@@ -118,24 +118,41 @@ export default {
       // Apply caching strategy for successful static asset hits
       if (response.ok) {
         const path = url.pathname;
+        console.log('[worker] Successful asset response for:', path);
+        console.log(
+          '[worker] Original headers:',
+          Object.fromEntries(response.headers)
+        );
 
         // Create new response with correct headers
-        const newResponse = new Response(response.body, response);
+        const newResponse = new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: new Headers(response.headers),
+        });
 
         // Always set correct Content-Type based on file extension
         if (path.endsWith('.css')) {
+          console.log('[worker] Setting CSS Content-Type for:', path);
           newResponse.headers.set('content-type', 'text/css; charset=utf-8');
         } else if (path.endsWith('.js')) {
+          console.log('[worker] Setting JS Content-Type for:', path);
           newResponse.headers.set(
             'content-type',
             'application/javascript; charset=utf-8'
           );
         } else if (path.endsWith('.json')) {
+          console.log('[worker] Setting JSON Content-Type for:', path);
           newResponse.headers.set(
             'content-type',
             'application/json; charset=utf-8'
           );
         }
+
+        console.log(
+          '[worker] Final headers before security:',
+          Object.fromEntries(newResponse.headers)
+        );
 
         // Heuristic: hashed assets (e.g. chunk.[hash].js/css) -> immutable
         if (/\.[a-f0-9]{8,}\.[a-z0-9]+$/i.test(path)) {
@@ -151,9 +168,7 @@ export default {
 
         // Add common security headers to all successful direct hits
         return withSecurityHeaders(newResponse, url);
-      }
-
-      // SPA fallback: for any failed asset request that looks like a SPA route
+      } // SPA fallback: for any failed asset request that looks like a SPA route
       const shouldFallback = shouldSpaFallback(url, noFallbackList);
       console.log(
         '[worker] Asset failed, shouldFallback:',
@@ -255,12 +270,16 @@ function captureError(err, env) {
 }
 
 function withSecurityHeaders(resp, url) {
+  console.log(
+    '[withSecurityHeaders] Input headers:',
+    Object.fromEntries(resp.headers)
+  );
   const headers = new Headers(resp.headers);
   // Basic security hardening
   headers.set('x-content-type-options', 'nosniff');
   headers.set('referrer-policy', 'strict-origin-when-cross-origin');
   headers.set('x-frame-options', 'DENY');
-  headers.set('x-xss-protection', '0'); // modern browsers rely on CSP
+  headers.set('x-xss-protection', '1; mode=block');
   headers.set('permissions-policy', 'geolocation=(), microphone=(), camera=()');
   // Simple CSP (adjust later): allow self + inline styles (Tailwind JIT) & data images
   headers.set(
@@ -269,12 +288,9 @@ function withSecurityHeaders(resp, url) {
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data:",
+      "img-src 'self' data: https:",
       "font-src 'self' data:",
-      "connect-src 'self'",
-      "object-src 'none'",
-      "frame-ancestors 'none'",
-      "base-uri 'self'",
+      "connect-src 'self' https:",
     ].join('; ')
   );
   // Prefetch hints for SPA main bundle if we can infer hashed main files
@@ -284,17 +300,21 @@ function withSecurityHeaders(resp, url) {
     // These Link headers are advisory; adjust when filenames change
     headers.append(
       'Link',
-      '</assets/vendor-cxkclgJA.js>; rel=preload; as=script'
+      '</assets/vendor-ggwPbhD5.js>; rel=preload; as=script'
     );
     headers.append(
       'Link',
-      '</assets/index-B2SJnuOB.js>; rel=preload; as=script'
+      '</assets/index-BFfBEOJN.js>; rel=preload; as=script'
     );
     headers.append(
       'Link',
-      '</assets/index-B89X4AwN.css>; rel=preload; as=style'
+      '</assets/index-Bq9UgYyd.css>; rel=preload; as=style'
     );
   }
+  console.log(
+    '[withSecurityHeaders] Final headers:',
+    Object.fromEntries(headers)
+  );
   return new Response(resp.body, {
     status: resp.status,
     statusText: resp.statusText,
