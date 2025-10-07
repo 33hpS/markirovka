@@ -212,7 +212,66 @@ npm run test:connections
 | E2E (local)    | `npm run e2e`           | Playwright, нужен dev/preview |
 | E2E (CI smoke) | Автоматически           | После деплоя                  |
 
-## 🔧 Разработка
+## � CI/CD и Деплой
+
+### Автоматический деплой
+
+При каждом push в ветку `main` автоматически:
+
+1. ✅ Проверка кода (lint, type-check)
+2. ✅ Запуск тестов с coverage
+3. ✅ Сборка приложения
+4. ✅ Деплой на Cloudflare Workers
+5. ✅ E2E smoke тесты на production
+
+### Настройка GitHub Secrets
+
+**📖 Подробная инструкция:** [docs/github-secrets-guide.md](./docs/github-secrets-guide.md)
+
+**Быстрая настройка:**
+
+Для работы CI/CD необходимо добавить секреты в GitHub:
+
+1. Перейдите: `Settings` → `Secrets and variables` → `Actions`
+2. Добавьте следующие секреты:
+
+| Секрет                  | Описание                               | Обязательный |
+| ----------------------- | -------------------------------------- | ------------ |
+| `CLOUDFLARE_API_TOKEN`  | API токен для деплоя на Workers        | ✅ Да        |
+| `CLOUDFLARE_ACCOUNT_ID` | ID аккаунта Cloudflare                 | ✅ Да        |
+| `CODECOV_TOKEN`         | Токен для загрузки coverage отчетов    | ⭕ Нет       |
+| `WORKER_BASE_URL`       | Custom URL вашего worker (опционально) | ⭕ Нет       |
+
+**Где получить токены:**
+
+- **Cloudflare API Token**: [Cloudflare Dashboard](https://dash.cloudflare.com/) → Profile → API
+  Tokens → Create Token (шаблон "Edit Cloudflare Workers")
+- **Cloudflare Account ID**: В любом разделе Cloudflare Dashboard в правой боковой панели
+- **Codecov Token**: [codecov.io](https://codecov.io/) → Add Repository → Copy Upload Token
+
+### Ручной деплой
+
+```bash
+# Деплой на Cloudflare Workers
+npm run deploy:worker
+
+# Деплой с конкретной версией
+COMMIT_SHA=$(git rev-parse HEAD) PKG_VERSION=$(node -p "require('./package.json').version") npm run deploy:worker
+```
+
+### Проверка деплоя
+
+После деплоя проверьте эндпоинты:
+
+```bash
+# Health check
+curl https://markirovka.{account-id}.workers.dev/health
+
+# Version info
+curl https://markirovka.{account-id}.workers.dev/version
+```
+
+## �🔧 Разработка
 
 ### Код-стайл
 
