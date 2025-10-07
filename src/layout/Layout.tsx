@@ -1,6 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom';
 
-import Badge from '../components/ui/Badge';
+import { Badge } from '../components/ui/Badge';
 import { LanguageThemeControls } from '../components/ui/LanguageThemeControls';
 import { MobileNavigation } from '../components/ui/MobileNavigation';
 import { useBuildInfo } from '../hooks/useBuildInfo';
