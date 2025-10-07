@@ -13,7 +13,7 @@ import {
 import { useState, useEffect } from 'react';
 
 import { Alert, AlertDescription } from '../components/ui/alert';
-import { Badge } from '../components/ui/Badge';
+import Badge from '../components/ui/Badge';
 import { Button } from '../components/ui/button';
 import {
   Card,

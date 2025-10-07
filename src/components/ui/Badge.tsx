@@ -22,4 +22,6 @@ function Badge({ className, variant = 'default', ...props }: BadgeProps) {
     />
   );
 }
+
+export { Badge };
 export default Badge;

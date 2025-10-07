@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from './dropdown-menu';
 import { Theme } from '../../contexts/ThemeContext';
-import { useTheme } from '../../hooks/useTheme';
+import { useTheme } from '../../hooks/use-theme';
 
 const themeOptions: Array<{
   code: Theme;
