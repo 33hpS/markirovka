@@ -29,7 +29,7 @@ const ReportsInteractive: React.FC = () => {
   const maxProduced = Math.max(...mockStats.map(s => s.produced));
 
   return (
-    <div className='p-6 max-w-6xl mx-auto'>
+    <div className='w-full min-h-screen bg-gray-50 dark:bg-gray-900 p-6'>
       <div className='flex justify-between items-center mb-6'>
         <h1 className='text-3xl font-bold'>Отчёты и аналитика</h1>
         <div className='flex gap-3'>

@@ -1,7 +1,7 @@
 import * as React from 'react';
 
-import Badge from './components/ui/Badge';
-import SectionCard from './components/ui/SectionCard';
+import { Badge } from './components/ui/Badge';
+import { SectionCard } from './components/ui/SectionCard';
 
 const App: React.FC = () => {
   return (

@@ -11,6 +11,38 @@ export const jwtPayloadSchema = z.object({
 
 export type JWTPayload = z.infer<typeof jwtPayloadSchema>;
 
+// Extended TokenPayload for AuthContext
+export interface TokenPayload {
+  userId: string;
+  email: string;
+  role: 'admin' | 'manager' | 'worker';
+  iat: number;
+  exp: number;
+  permissions?: string[];
+}
+
+// Compatibility exports for AuthContext
+export const validateToken = (token: string): boolean =>
+  jwtUtils.isValid(token);
+export const decodeToken = (token: string): TokenPayload | null => {
+  const payload = jwtUtils.decode(token);
+  if (!payload) return null;
+
+  const result: TokenPayload = {
+    userId: payload.sub,
+    email: payload.sub, // В реальном токене будет отдельное поле email
+    role: payload.role,
+    iat: payload.iat,
+    exp: payload.exp,
+  };
+
+  if (payload.permissions) {
+    result.permissions = payload.permissions;
+  }
+
+  return result;
+};
+
 // Token storage utilities
 export const tokenStorage = {
   get: (): string | null => {
@@ -24,16 +56,16 @@ export const tokenStorage = {
   set: (token: string): void => {
     try {
       localStorage.setItem('authToken', token);
-    } catch (error) {
-      console.error('Failed to store token:', error);
+    } catch {
+      // no-op
     }
   },
 
   remove: (): void => {
     try {
       localStorage.removeItem('authToken');
-    } catch (error) {
-      console.error('Failed to remove token:', error);
+    } catch {
+      // no-op
     }
   },
 };
@@ -44,7 +76,7 @@ export const jwtUtils = {
     try {
       const parts = token.split('.');
       if (parts.length !== 3 || !parts[1]) return null;
-      
+
       const payload = JSON.parse(atob(parts[1]));
       const result = jwtPayloadSchema.safeParse(payload);
       return result.success ? result.data : null;
@@ -56,7 +88,7 @@ export const jwtUtils = {
   isExpired: (token: string): boolean => {
     const payload = jwtUtils.decode(token);
     if (!payload) return true;
-    
+
     const now = Math.floor(Date.now() / 1000);
     return payload.exp <= now;
   },
@@ -87,7 +119,7 @@ export class TokenRefreshManager {
 
   start(token: string): void {
     this.stop();
-    
+
     const payload = jwtUtils.decode(token);
     if (!payload) return;
 
@@ -102,8 +134,8 @@ export class TokenRefreshManager {
           if (newToken) {
             this.start(newToken);
           }
-        } catch (error) {
-          console.error('Token refresh failed:', error);
+        } catch {
+          // no-op
         }
       }, delay);
     }

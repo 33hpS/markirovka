@@ -1,6 +1,6 @@
 name = "markirovka"
+compatibility_date = "2024-09-23"
 main = "worker.js"
-compatibility_date = "2025-09-30"
 preview_urls = true
 
 [assets]
@@ -8,3 +8,8 @@ preview_urls = true
 directory = "dist"
 # Binding name used in the worker.js fetch handler
 binding = "ASSETS"
+
+# R2 Storage binding for secure file uploads via Worker
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "markirovka-storage"

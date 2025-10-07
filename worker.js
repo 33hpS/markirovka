@@ -1,31 +1,21 @@
-// Cloudflare Worker entrypoint serving built Vite assets from /dist via Assets binding.
-// Features:
-//  - Health endpoint (/health)
-//  - Version endpoint (/version) returning commit SHA + package version injected via env
-//  - Conditional Sentry (or console) error logging if SENTRY_DSN provided
-//  - Cache-Control headers for static assets (immutable hashed files) & HTML
-//  - SPA fallback with configurable excluded routes
-//  - Configurable no-fallback route list via env.NO_FALLBACK_PATHS (comma separated)
-
+// Cloudflare Worker with Content-Type fixes
 export default {
-  /**
-   * @param {Request} request
-   * @param {any} env
-   * @param {ExecutionContext} ctx
-   */
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    try {
-      // Pre-parse no-fallback list (cached across requests because module scope)
-      if (!globalThis.__NO_FALLBACK) {
-        globalThis.__NO_FALLBACK = (env.NO_FALLBACK_PATHS || '')
-          .split(',')
-          .map(p => p.trim())
-          .filter(Boolean);
-      }
-      const noFallbackList = globalThis.__NO_FALLBACK;
 
-      // Health endpoint (cheap, no asset fetch)
+    try {
+      // Simple CORS helper
+      const corsHeaders = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      };
+
+      if (request.method === 'OPTIONS') {
+        return new Response(null, { status: 204, headers: corsHeaders });
+      }
+
+      // Health endpoint
       if (url.pathname === '/health') {
         return new Response('ok', {
           status: 200,
@@ -33,8 +23,7 @@ export default {
         });
       }
 
-      // Version endpoint: relies on env.COMMIT_SHA and env.PKG_VERSION (configured in deployment)
-      // Fallback to version.json if env vars not available
+      // Version endpoint
       if (url.pathname === '/version') {
         let versionData = {
           commit: env.COMMIT_SHA || 'unknown',
@@ -43,7 +32,6 @@ export default {
           source: 'env',
         };
 
-        // If env vars missing, try fallback to version.json
         if (
           versionData.commit === 'unknown' ||
           versionData.version === 'unknown'
@@ -58,27 +46,148 @@ export default {
               const fallbackData = await versionJsonResp.json();
               versionData = {
                 ...fallbackData,
-                time: new Date().toISOString(), // Always current timestamp
+                time: new Date().toISOString(),
                 source: fallbackData.source || 'fallback',
               };
-              console.log('[worker] Using version.json fallback', versionData);
             }
           } catch (err) {
             console.warn('[worker] version.json fallback failed', err);
           }
         }
 
-        const body = JSON.stringify(versionData);
-        return new Response(body, {
+        return new Response(JSON.stringify(versionData), {
           status: 200,
           headers: {
             'content-type': 'application/json',
             'cache-control': 'no-store',
+            ...corsHeaders,
           },
         });
       }
 
-      // Special handling for known SPA routes - serve index.html immediately
+      // API: R2 upload via Worker (avoid exposing R2 keys on frontend)
+      if (url.pathname === '/api/r2/upload' && request.method === 'POST') {
+        if (!env.R2) {
+          return new Response(
+            JSON.stringify({ error: 'R2 binding is not configured' }),
+            {
+              status: 501,
+              headers: { 'content-type': 'application/json', ...corsHeaders },
+            }
+          );
+        }
+
+        const contentType = request.headers.get('content-type') || '';
+        if (contentType.includes('multipart/form-data')) {
+          const form = await request.formData();
+          const file = form.get('file');
+          const key = form.get('key');
+          const ct =
+            form.get('contentType') ||
+            (file && file.type) ||
+            'application/octet-stream';
+
+          if (!(file instanceof Blob) || typeof key !== 'string') {
+            return new Response(
+              JSON.stringify({
+                error: 'Invalid form data: file and key are required',
+              }),
+              {
+                status: 400,
+                headers: { 'content-type': 'application/json', ...corsHeaders },
+              }
+            );
+          }
+
+          await env.R2.put(key.replace(/^\//, ''), file.stream(), {
+            httpMetadata: { contentType: String(ct) },
+          });
+
+          const origin = `${url.protocol}//${url.host}`;
+          return new Response(
+            JSON.stringify({
+              success: true,
+              key,
+              url: `${origin}/api/r2/file?key=${encodeURIComponent(key)}`,
+            }),
+            {
+              status: 200,
+              headers: { 'content-type': 'application/json', ...corsHeaders },
+            }
+          );
+        }
+
+        // Fallback: raw body upload with ?key= param
+        const key = url.searchParams.get('key');
+        if (!key) {
+          return new Response(
+            JSON.stringify({ error: 'Missing key parameter' }),
+            {
+              status: 400,
+              headers: { 'content-type': 'application/json', ...corsHeaders },
+            }
+          );
+        }
+
+        if (!env.R2) {
+          return new Response(
+            JSON.stringify({ error: 'R2 binding is not configured' }),
+            {
+              status: 501,
+              headers: { 'content-type': 'application/json', ...corsHeaders },
+            }
+          );
+        }
+
+        const ct =
+          request.headers.get('content-type') || 'application/octet-stream';
+        await env.R2.put(key.replace(/^\//, ''), request.body, {
+          httpMetadata: { contentType: ct },
+        });
+        const origin = `${url.protocol}//${url.host}`;
+        return new Response(
+          JSON.stringify({
+            success: true,
+            key,
+            url: `${origin}/api/r2/file?key=${encodeURIComponent(key)}`,
+          }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json', ...corsHeaders },
+          }
+        );
+      }
+
+      // API: Serve R2 file via Worker proxy
+      if (url.pathname === '/api/r2/file' && request.method === 'GET') {
+        const key = url.searchParams.get('key');
+        if (!key) {
+          return new Response('Missing key', {
+            status: 400,
+            headers: { ...corsHeaders },
+          });
+        }
+        if (!env.R2) {
+          return new Response('R2 binding is not configured', {
+            status: 501,
+            headers: { ...corsHeaders },
+          });
+        }
+        const obj = await env.R2.get(key.replace(/^\//, ''));
+        if (!obj) {
+          return new Response('Not Found', {
+            status: 404,
+            headers: { ...corsHeaders },
+          });
+        }
+        const headers = new Headers({ ...corsHeaders });
+        if (obj.httpMetadata?.contentType)
+          headers.set('content-type', obj.httpMetadata.contentType);
+        if (obj.size) headers.set('content-length', String(obj.size));
+        return new Response(obj.body, { status: 200, headers });
+      }
+
+      // Known SPA routes - serve index.html directly
       const knownSpaRoutes = [
         '/production',
         '/designer',
@@ -89,126 +198,89 @@ export default {
         '/login',
         '/docs',
       ];
+
       if (knownSpaRoutes.includes(url.pathname)) {
-        console.log(
-          '[worker] Known SPA route, serving index.html directly:',
-          url.pathname
-        );
-        // Try root path instead of /index.html to avoid redirect issues
         const indexReq = new Request(new URL('/', url), request);
         const indexResp = await env.ASSETS.fetch(indexReq);
         if (indexResp.ok) {
-          const spaResponse = new Response(indexResp.body, {
-            status: 200,
-            headers: new Headers(indexResp.headers),
-          });
-          spaResponse.headers.set(
-            'cache-control',
-            'no-store, must-revalidate, no-cache'
-          );
-          spaResponse.headers.set('pragma', 'no-cache');
-          spaResponse.headers.set('expires', '0');
-          return withSecurityHeaders(spaResponse, url);
+          const headers = new Headers(indexResp.headers);
+          headers.set('cache-control', 'no-store, must-revalidate');
+          return new Response(indexResp.body, { status: 200, headers });
         }
       }
 
-      // First try to serve the exact asset
+      // Try to serve the exact asset
       let response = await env.ASSETS.fetch(request);
 
-      // Apply caching strategy for successful static asset hits
       if (response.ok) {
         const path = url.pathname;
-        console.log('[worker] Successful asset response for:', path);
-        console.log(
-          '[worker] Original headers:',
-          Object.fromEntries(response.headers)
-        );
+        const headers = new Headers(response.headers);
 
-        // Create new response with correct headers
-        const newResponse = new Response(response.body, {
-          status: response.status,
-          statusText: response.statusText,
-          headers: new Headers(response.headers),
-        });
-
-        // Always set correct Content-Type based on file extension
+        // Fix Content-Type for CSS files
         if (path.endsWith('.css')) {
-          console.log('[worker] Setting CSS Content-Type for:', path);
-          newResponse.headers.set('content-type', 'text/css; charset=utf-8');
+          headers.set('content-type', 'text/css; charset=utf-8');
+          headers.set('x-worker-fix', 'css-content-type');
         } else if (path.endsWith('.js')) {
-          console.log('[worker] Setting JS Content-Type for:', path);
-          newResponse.headers.set(
-            'content-type',
-            'application/javascript; charset=utf-8'
-          );
+          headers.set('content-type', 'application/javascript; charset=utf-8');
         } else if (path.endsWith('.json')) {
-          console.log('[worker] Setting JSON Content-Type for:', path);
-          newResponse.headers.set(
-            'content-type',
-            'application/json; charset=utf-8'
-          );
+          headers.set('content-type', 'application/json; charset=utf-8');
         }
 
-        console.log(
-          '[worker] Final headers before security:',
-          Object.fromEntries(newResponse.headers)
-        );
-
-        // Heuristic: hashed assets (e.g. chunk.[hash].js/css) -> immutable
+        // Cache hashed assets
         if (/\.[a-f0-9]{8,}\.[a-z0-9]+$/i.test(path)) {
-          newResponse.headers.set(
-            'cache-control',
-            'public, max-age=31536000, immutable'
-          );
+          headers.set('cache-control', 'public, max-age=31536000, immutable');
         } else if (path === '/' || path.endsWith('.html')) {
-          // Make HTML effectively uncacheable so new deployments show instantly
-          newResponse.headers.set('cache-control', 'no-store, must-revalidate');
-          newResponse.headers.set('cf-deploy-hint', Date.now().toString());
-        }
-
-        // Add common security headers to all successful direct hits
-        return withSecurityHeaders(newResponse, url);
-      } // SPA fallback: for any failed asset request that looks like a SPA route
-      const shouldFallback = shouldSpaFallback(url, noFallbackList);
-      console.log(
-        '[worker] Asset failed, shouldFallback:',
-        shouldFallback,
-        'status:',
-        response.status
-      );
-
-      if (shouldFallback) {
-        console.log('[worker] Attempting SPA fallback for:', url.pathname);
-
-        try {
-          const indexReq = new Request(new URL('/', url), request);
-          const indexResp = await env.ASSETS.fetch(indexReq);
-
-          if (indexResp.ok) {
-            console.log('[worker] SPA fallback SUCCESS');
-            const spaResponse = new Response(indexResp.body, {
-              status: 200,
-              headers: new Headers(indexResp.headers),
-            });
-            // Set no-cache for SPA routes to ensure fresh content
-            spaResponse.headers.set(
-              'cache-control',
-              'no-store, must-revalidate'
+          headers.set('cache-control', 'no-store, must-revalidate');
+          // Add prefetch hints for the main files
+          if (path === '/' || path.endsWith('index.html')) {
+            headers.append(
+              'Link',
+              '</assets/vendor-ggwPbhD5.js>; rel=preload; as=script'
             );
-            return withSecurityHeaders(spaResponse, url);
-          } else {
-            console.error(
-              '[worker] index.html fetch failed:',
-              indexResp.status
+            headers.append(
+              'Link',
+              '</assets/index-Ch-zg86x.js>; rel=preload; as=script'
+            );
+            headers.append(
+              'Link',
+              '</assets/index-BqVOnNKd.css>; rel=preload; as=style'
             );
           }
-        } catch (err) {
-          console.error('[worker] SPA fallback error:', err);
+        }
+
+        // Security headers
+        headers.set('x-content-type-options', 'nosniff');
+        headers.set('referrer-policy', 'strict-origin-when-cross-origin');
+        headers.set('x-frame-options', 'DENY');
+        headers.set('x-xss-protection', '1; mode=block');
+
+        return new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+        });
+      }
+
+      // SPA fallback for failed assets that look like routes
+      const shouldFallback =
+        !url.pathname.includes('.') &&
+        !url.pathname.startsWith('/api') &&
+        url.pathname !== '/';
+
+      if (shouldFallback) {
+        const indexReq = new Request(new URL('/', url), request);
+        const indexResp = await env.ASSETS.fetch(indexReq);
+
+        if (indexResp.ok) {
+          const headers = new Headers(indexResp.headers);
+          headers.set('cache-control', 'no-store, must-revalidate');
+          return new Response(indexResp.body, { status: 200, headers });
         }
       }
-      return withSecurityHeaders(response, url);
+
+      return response;
     } catch (err) {
-      captureError(err, env);
+      console.error('[worker:error]', err);
       return new Response('Internal Error', {
         status: 500,
         headers: { 'content-type': 'text/plain' },
@@ -216,108 +288,3 @@ export default {
     }
   },
 };
-
-function shouldSpaFallback(url, noFallbackList) {
-  const pathname = url.pathname;
-  console.log('[worker] shouldSpaFallback check:', {
-    pathname,
-    noFallbackList,
-  });
-
-  if (pathname === '/') {
-    console.log('[worker] Skip root');
-    return false; // root already served
-  }
-
-  if (noFallbackList.includes(pathname)) {
-    console.log('[worker] In no-fallback list');
-    return false;
-  }
-
-  const last = pathname.split('/').pop();
-  const looksLikeFile = last && last.includes('.');
-  if (looksLikeFile) {
-    console.log('[worker] Looks like file:', last);
-    return false;
-  }
-
-  if (pathname.startsWith('/api')) {
-    console.log('[worker] API route');
-    return false;
-  }
-
-  console.log('[worker] Should fallback to SPA');
-  return true;
-}
-
-// Optional Sentry capture (minimal stub). Real integration can import @sentry/xyz edge SDK.
-function captureError(err, env) {
-  if (!env.SENTRY_DSN) {
-    console.error('[worker:error]', err);
-    return;
-  }
-  // Placeholder: send minimal beacon via fetch
-  try {
-    const body = JSON.stringify({
-      message: String(err),
-      stack: err?.stack,
-      dsn: env.SENTRY_DSN,
-    });
-    fetch(env.SENTRY_DSN, { method: 'POST', body });
-  } catch (e) {
-    console.error('[worker:error:send-failed]', e);
-  }
-}
-
-function withSecurityHeaders(resp, url) {
-  console.log(
-    '[withSecurityHeaders] Input headers:',
-    Object.fromEntries(resp.headers)
-  );
-  const headers = new Headers(resp.headers);
-  // Basic security hardening
-  headers.set('x-content-type-options', 'nosniff');
-  headers.set('referrer-policy', 'strict-origin-when-cross-origin');
-  headers.set('x-frame-options', 'DENY');
-  headers.set('x-xss-protection', '1; mode=block');
-  headers.set('permissions-policy', 'geolocation=(), microphone=(), camera=()');
-  // Simple CSP (adjust later): allow self + inline styles (Tailwind JIT) & data images
-  headers.set(
-    'content-security-policy',
-    [
-      "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-      "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: https:",
-      "font-src 'self' data:",
-      "connect-src 'self' https:",
-    ].join('; ')
-  );
-  // Prefetch hints for SPA main bundle if we can infer hashed main files
-  const pathname = url.pathname;
-  if (pathname === '/' || pathname.endsWith('index.html')) {
-    // Heuristic: prefetch vendor + main chunks
-    // These Link headers are advisory; adjust when filenames change
-    headers.append(
-      'Link',
-      '</assets/vendor-ggwPbhD5.js>; rel=preload; as=script'
-    );
-    headers.append(
-      'Link',
-      '</assets/index-BFfBEOJN.js>; rel=preload; as=script'
-    );
-    headers.append(
-      'Link',
-      '</assets/index-Bq9UgYyd.css>; rel=preload; as=style'
-    );
-  }
-  console.log(
-    '[withSecurityHeaders] Final headers:',
-    Object.fromEntries(headers)
-  );
-  return new Response(resp.body, {
-    status: resp.status,
-    statusText: resp.statusText,
-    headers,
-  });
-}

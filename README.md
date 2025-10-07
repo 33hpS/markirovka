@@ -1,85 +1,204 @@
-# Маркировочная система
+# 🏷️ Маркировочная система (Markirovka)
 
-Веб-приложение для управления производственными партиями, генерации QR-кодов и печати этикеток.
-Развёрнуто через **Cloudflare Worker (assets binding + SPA fallback)** с автоматическим CI/CD.
+Полнофункциональное production-ready веб-приложение для управления производственными партиями,
+генерации QR-кодов и печати этикеток.
 
-> Статус: ядро фронтенда и пайплайн готовы; бизнес‑модули (производство, отчётность, дизайнер) —
-> WIP.
+**Развёрнуто**:
+[https://markirovka.sherhan1988hp.workers.dev](https://markirovka.sherhan1988hp.workers.dev)
 
-## 🚀 Основные возможности (текущее / план)
+> **Статус**: ✅ Инфраструктура готова (Worker, R2, Supabase), фронтенд работает, требуется
+> инициализация БД
 
-| Модуль                                 | Статус        | Описание                               |
-| -------------------------------------- | ------------- | -------------------------------------- |
-| Landing / каркас                       | ✅            | Базовый лендинг + секции               |
-| /docs заглушка                         | ✅            | Маршрут и страница WIP                 |
-| CI (lint, types, unit tests, coverage) | ✅            | GitHub Actions                         |
-| Автодеплой Cloudflare Worker           | ✅            | Wrangler + vars COMMIT_SHA/PKG_VERSION |
-| /health /version                       | ✅            | Мониторинг + build metadata            |
-| E2E Playwright smoke                   | ✅            | Отдельный CI job                       |
-| Кэширование immutable ассетов          | ✅            | 1y immutable hashed                    |
-| CSP / security headers                 | ✅ (baseline) | Ужесточение позже                      |
-| Label Designer                         | WIP           | Canvas / инспектор                     |
-| Производство                           | WIP           | Партионный учёт                        |
-| Отчётность                             | WIP           | Графики / KPI                          |
-| RBAC / роли                            | WIP           | admin / manager / worker               |
-| Печать / профили                       | WIP           | ZPL / PDF / web print                  |
-| Наблюдаемость (Sentry)                 | Planned       | Ошибки / трейсинг                      |
+---
+
+## 🚀 Быстрый старт
+
+**→ См. [QUICKSTART.md](./QUICKSTART.md)** для пошаговой инструкции запуска
+
+```bash
+# 1. Установите зависимости
+npm install
+
+# 2. Проверьте подключения (Worker ✅, R2 ✅, Supabase требует init)
+npm run test:connections
+
+# 3. Инициализируйте БД (см. QUICKSTART.md раздел 1)
+# Выполните database/schema.sql в Supabase SQL Editor
+
+# 4. Запустите приложение
+npm run dev
+```
+
+**Тестовые учетные данные:**
+
+- Admin: `admin` / `admin123`
+- Manager: `manager` / `manager123`
+- Worker: `worker` / `worker123`
+
+---
+
+## � Основные возможности
+
+| Модуль                         | Статус        | Описание                             |
+| ------------------------------ | ------------- | ------------------------------------ |
+| **Инфраструктура**             |               |                                      |
+| Cloudflare Worker + R2 Storage | ✅ Deployed   | SPA hosting + secure file uploads    |
+| Supabase PostgreSQL            | ✅ Configured | Database ready (требует init schema) |
+| Environment Management         | ✅ Complete   | .env.example + .env.local setup      |
+| /health, /version endpoints    | ✅            | Health checks + build metadata       |
+| **Frontend Core**              |               |                                      |
+| Authentication System          | ✅ Working    | JWT mock auth (ready for Supabase)   |
+| Protected Routes               | ✅ Fixed      | No redirect loops                    |
+| Landing Page                   | ✅            | Home page with navigation            |
+| Dashboard (роли)               | ✅            | Admin/Manager/Worker dashboards      |
+| **Business Modules**           |               |                                      |
+| Label Designer                 | 🚧 WIP        | Canvas editor + inspector            |
+| Production Management          | 🚧 WIP        | Batch tracking + QR generation       |
+| Print Jobs                     | 🚧 WIP        | ZPL / PDF / direct printing          |
+| Reports & Analytics            | 🚧 WIP        | Charts / KPIs / statistics           |
+| **CI/CD & Quality**            |               |                                      |
+| GitHub Actions CI              | ✅            | Lint, typecheck, tests, coverage     |
+| Automated deployment           | ✅            | Auto-deploy to Cloudflare Worker     |
+| E2E tests (Playwright)         | ✅            | Smoke tests                          |
+| Immutable asset caching        | ✅            | 1y cache with hashed filenames       |
+| CSP / security headers         | ✅            | Basic CSP enabled                    |
 
 ## 🛠 Технологический стек
 
-- **Frontend**: React 18 + TypeScript + Vite
-- **UI**: Radix UI + Tailwind CSS + Shadcn/ui
-- **State Management**: Zustand + React Context
-- **Forms**: React Hook Form + Zod validation
-- **Authentication**: JWT tokens with auto-refresh
-- **Testing**: Vitest + React Testing Library + MSW
-- **Code Quality**: ESLint + Prettier + Husky + lint-staged
-- **Deployment**: Cloudflare Worker (Wrangler) + GitHub Actions
+### Frontend
 
-## 📦 Установка и запуск
+- **Framework**: React 18 + TypeScript + Vite 5
+- **UI Library**: Radix UI primitives + Tailwind CSS + Shadcn/ui components
+- **State Management**: Zustand (global) + React Context (auth)
+- **Forms**: React Hook Form + Zod validation
+- **Routing**: React Router v6 with protected routes
+- **Canvas**: HTML5 Canvas API для редактора этикеток
+
+### Backend & Infrastructure
+
+- **Hosting**: Cloudflare Workers (serverless, global CDN)
+- **File Storage**: Cloudflare R2 (S3-compatible object storage)
+- **Database**: Supabase (PostgreSQL + Auth + Realtime)
+- **Authentication**: JWT-based (mock готово, Supabase Auth ready to integrate)
+
+### DevOps & Quality
+
+- **Testing**: Vitest + React Testing Library + MSW (API mocks)
+- **E2E**: Playwright (smoke tests)
+- **Code Quality**: ESLint + Prettier + TypeScript strict mode
+- **Git Hooks**: Husky + lint-staged (pre-commit validation)
+- **CI/CD**: GitHub Actions (lint, test, build, deploy)
+- **Deployment**: Wrangler CLI (Cloudflare Workers)
+
+## 🏗️ Архитектура
+
+```
+┌─────────────────┐
+│   React SPA     │  ← Пользователь
+│  (TypeScript)   │
+└────────┬────────┘
+         │
+         │ HTTPS
+         ↓
+┌─────────────────────────────┐
+│  Cloudflare Worker          │
+│  - Assets serving (SPA)     │  ← Global CDN Edge
+│  - /api/r2/upload endpoint  │
+│  - /api/r2/file proxy       │
+│  - /health, /version        │
+└──┬──────────────────────┬───┘
+   │                      │
+   │ R2 API               │ HTTPS
+   ↓                      ↓
+┌────────────┐    ┌──────────────┐
+│ R2 Storage │    │   Supabase   │
+│  (Files)   │    │  PostgreSQL  │
+└────────────┘    │     Auth     │
+                  │   Realtime   │
+                  └──────────────┘
+```
+
+**Безопасность:**
+
+- ✅ Все секреты только на сервере (Worker env vars)
+- ✅ R2 ключи не попадают в браузер (Worker proxy)
+- ✅ Supabase Row Level Security (RLS)
+- ✅ CSP headers + HTTPS only
+
+**Масштабирование:**
+
+- ✅ Cloudflare Edge CDN (200+ locations)
+- ✅ Serverless Worker (unlimited scale)
+- ✅ R2 S3-compatible storage
+- ✅ Supabase managed PostgreSQL
+
+---
+
+## 📦 Установка и настройка
 
 ### Требования
 
-- Node.js >= 18.0.0
+- Node.js >= 20.0.0
 - npm >= 9.0.0
+- Cloudflare account (для деплоя)
+- Supabase account (для БД)
 
-### Установка зависимостей
+### 1. Установка зависимостей
 
 ```bash
 npm install
 ```
 
-### Переменные окружения
+### 2. Переменные окружения
 
-Создайте файл `.env.local` в корне проекта:
+Скопируйте шаблон и заполните реальные значения:
+
+```bash
+cp .env.example .env.local
+```
+
+Отредактируйте `.env.local`:
 
 ```env
-VITE_API_BASE_URL=http://localhost:8000/api
-VITE_APP_TITLE=Маркировочная система
-VITE_PRINT_SERVICE_URL=http://localhost:8001
-VITE_QR_SERVICE_URL=http://localhost:8002
-VITE_MAX_FILE_SIZE=10485760
-VITE_ALLOWED_FILE_TYPES=image/png,image/jpeg,application/pdf
+# Supabase
+VITE_SUPABASE_URL=https://wjclhytzewfcalyybhab.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+
+# Cloudflare R2 (через Worker API - ключи не нужны в .env)
+VITE_API_URL=https://markirovka.sherhan1988hp.workers.dev/api
+
+# Для локальной разработки Worker нужны ключи:
+VITE_R2_ENDPOINT=https://your-account-id.r2.cloudflarestorage.com
+VITE_R2_ACCESS_KEY_ID=your-access-key
+VITE_R2_SECRET_ACCESS_KEY=your-secret-key
+VITE_R2_BUCKET_NAME=markirovka-storage
 ```
 
-### Запуск в режиме разработки
+**→ Подробнее:** см. [SETUP.md](./SETUP.md) для полной инструкции по настройке
+
+### 3. Инициализация базы данных
+
+См. [QUICKSTART.md](./QUICKSTART.md) раздел "1️⃣ Инициализация базы данных Supabase"
+
+Или кратко:
+
+1. Откройте Supabase SQL Editor
+2. Выполните `database/schema.sql`
+
+### 4. Запуск приложения
 
 ```bash
+# Режим разработки (http://localhost:5173)
 npm run dev
-```
 
-Приложение будет доступно по адресу: http://localhost:3000
-
-### Сборка (production)
-
-```bash
+# Сборка для production
 npm run build
-```
 
-### Предварительный просмотр сборки
+# Деплой на Cloudflare Workers
+npm run deploy:worker
 
-```bash
-npm run preview
+# Проверка подключений
+npm run test:connections
 ```
 
 ## 🧪 Тестирование

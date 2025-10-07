@@ -1,4 +1,5 @@
 import { setupServer } from 'msw/node';
+
 import { authHandlers } from './authHandlers';
 import { labelHandlers } from './labelHandlers';
 import { userHandlers } from './userHandlers';
