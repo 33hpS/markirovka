@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "postbuild": "node scripts/write-version-json.mjs",
+    "deploy": "npm run build && wrangler deploy",
     "deploy:worker": "node scripts/deploy-worker.mjs",
     "test:connections": "node --env-file=.env.local scripts/test-connections.mjs",
     "preview": "vite preview",

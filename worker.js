@@ -65,6 +65,106 @@ export default {
         });
       }
 
+      // Health check: Supabase
+      if (url.pathname === '/api/health/supabase') {
+        try {
+          const supabaseUrl = env.SUPABASE_URL;
+          const supabaseKey = env.SUPABASE_ANON_KEY;
+
+          if (!supabaseUrl || !supabaseKey) {
+            return new Response(
+              JSON.stringify({
+                connected: false,
+                message: 'Supabase не настроен',
+              }),
+              {
+                status: 200,
+                headers: { 'content-type': 'application/json', ...corsHeaders },
+              }
+            );
+          }
+
+          // Простая проверка REST API
+          const healthResp = await fetch(`${supabaseUrl}/rest/v1/`, {
+            method: 'HEAD',
+            headers: {
+              apikey: supabaseKey,
+              Authorization: `Bearer ${supabaseKey}`,
+            },
+            signal: AbortSignal.timeout(5000),
+          });
+
+          const connected = healthResp.ok;
+          return new Response(
+            JSON.stringify({
+              connected,
+              message: connected
+                ? 'База данных активна'
+                : `Ошибка: ${healthResp.status}`,
+            }),
+            {
+              status: 200,
+              headers: { 'content-type': 'application/json', ...corsHeaders },
+            }
+          );
+        } catch (err) {
+          return new Response(
+            JSON.stringify({
+              connected: false,
+              message: `Ошибка подключения: ${err.message}`,
+            }),
+            {
+              status: 200,
+              headers: { 'content-type': 'application/json', ...corsHeaders },
+            }
+          );
+        }
+      }
+
+      // Health check: R2
+      if (url.pathname === '/api/health/r2') {
+        try {
+          if (!env.R2) {
+            return new Response(
+              JSON.stringify({
+                connected: false,
+                message: 'R2 не настроен',
+              }),
+              {
+                status: 200,
+                headers: { 'content-type': 'application/json', ...corsHeaders },
+              }
+            );
+          }
+
+          // Проверка доступности R2 через list
+          const list = await env.R2.list({ limit: 1 });
+          const connected = list !== null && list !== undefined;
+
+          return new Response(
+            JSON.stringify({
+              connected,
+              message: connected ? 'Хранилище активно' : 'Ошибка доступа к R2',
+            }),
+            {
+              status: 200,
+              headers: { 'content-type': 'application/json', ...corsHeaders },
+            }
+          );
+        } catch (err) {
+          return new Response(
+            JSON.stringify({
+              connected: false,
+              message: `Ошибка R2: ${err.message}`,
+            }),
+            {
+              status: 200,
+              headers: { 'content-type': 'application/json', ...corsHeaders },
+            }
+          );
+        }
+      }
+
       // API: R2 upload via Worker (avoid exposing R2 keys on frontend)
       if (url.pathname === '/api/r2/upload' && request.method === 'POST') {
         if (!env.R2) {

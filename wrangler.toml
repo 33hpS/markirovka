@@ -13,3 +13,9 @@ binding = "ASSETS"
 [[r2_buckets]]
 binding = "R2"
 bucket_name = "markirovka-storage"
+
+# Environment variables (secrets should be set via: wrangler secret put VARIABLE_NAME)
+# These can be set in Cloudflare Dashboard or via CLI:
+# wrangler secret put SUPABASE_URL
+# wrangler secret put SUPABASE_ANON_KEY
+# Or add them to .dev.vars for local development
