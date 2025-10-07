@@ -20,6 +20,7 @@ const Labels = React.lazy(() => import('./pages/Labels'));
 const Products = React.lazy(() => import('./pages/Products'));
 const LineOperator = React.lazy(() => import('./pages/LineOperator'));
 const Login = React.lazy(() => import('./pages/Login'));
+const SystemStatus = React.lazy(() => import('./pages/SystemStatus'));
 import './index.css';
 
 const container = document.getElementById('root');
@@ -57,6 +58,7 @@ root.render(
                   <Route path='/line-operator' element={<LineOperator />} />
                   <Route path='/printing' element={<Printing />} />
                   <Route path='/reports' element={<Reports />} />
+                  <Route path='/system-status' element={<SystemStatus />} />
                   <Route path='*' element={<Navigate to='/home' replace />} />
                 </Route>
               </Routes>

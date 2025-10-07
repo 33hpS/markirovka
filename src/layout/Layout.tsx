@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom';
 
+import { ConnectionStatus } from '../components/system/ConnectionStatus';
 import { Badge } from '../components/ui/Badge';
 import { LanguageThemeControls } from '../components/ui/LanguageThemeControls';
 import { MobileNavigation } from '../components/ui/MobileNavigation';
@@ -20,6 +21,7 @@ const Layout: React.FC = () => {
     { to: '/printing', label: t.printing },
     { to: '/reports', label: t.reports },
     { to: '/users', label: t.users, protected: true },
+    { to: '/system-status', label: 'Статус' },
     { to: '/docs', label: t.docs },
   ];
 
@@ -70,6 +72,7 @@ const Layout: React.FC = () => {
           </nav>
 
           <div className='flex items-center gap-3'>
+            <ConnectionStatus />
             <LanguageThemeControls />
             <MobileNavigation nav={nav} />
           </div>
@@ -84,9 +87,7 @@ const Layout: React.FC = () => {
         <div className='mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-4 py-6 text-xs text-gray-500 dark:text-gray-400 sm:flex-row sm:px-6 lg:px-8'>
           <span>© {year} Маркировочная система</span>
           <span className='flex flex-wrap items-center gap-2'>
-            <Badge color={connectionBadge.color} className='whitespace-nowrap'>
-              {connectionBadge.label}
-            </Badge>
+            <ConnectionStatus />
             <Badge color='green'>CI Active</Badge>
             <Badge color='purple'>Caching</Badge>
             {loading && <Badge color='gray'>build...</Badge>}
