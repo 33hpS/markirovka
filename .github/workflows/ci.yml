@@ -1,3 +1,4 @@
+# CI/CD Pipeline для автоматического деплоя на Cloudflare Workers
 name: CI
 
 on:
