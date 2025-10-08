@@ -203,7 +203,7 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const cspValue =
-      "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: wss: wss://wjclhytzewfcalyybhab.supabase.co; worker-src 'self' blob:;";
+      "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' data: blob:; connect-src 'self' https: wss: wss://wjclhytzewfcalyybhab.supabase.co; worker-src 'self' blob:";
 
     try {
       // Simple CORS helper
@@ -221,7 +221,10 @@ export default {
       if (url.pathname === '/health') {
         return new Response('ok', {
           status: 200,
-          headers: { 'content-type': 'text/plain' },
+          headers: {
+            'content-type': 'text/plain',
+            ...corsHeaders,
+          },
         });
       }
 
@@ -1006,6 +1009,11 @@ export default {
         const path = url.pathname;
         const headers = new Headers(response.headers);
         const contentType = headers.get('content-type') || '';
+
+        // Add CORS headers to all responses
+        Object.entries(corsHeaders).forEach(([key, value]) => {
+          headers.set(key, value);
+        });
 
         // Fix Content-Type for CSS files
         if (path.endsWith('.css')) {

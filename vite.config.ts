@@ -13,6 +13,12 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  optimizeDeps: {
+    include: ['@emotion/is-prop-valid', 'motion'],
+    esbuildOptions: {
+      target: 'es2020',
+    },
+  },
   build: {
     outDir: 'dist',
     sourcemap: isStaging,
