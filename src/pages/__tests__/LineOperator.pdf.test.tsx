@@ -5,6 +5,7 @@ import LineOperator from '../LineOperator';
 
 const {
   fetchProductsMock,
+  fetchTemplatesMock,
   saveMock,
   addImageMock,
   addPageMock,
@@ -13,6 +14,7 @@ const {
   html2canvasMock,
 } = vi.hoisted(() => ({
   fetchProductsMock: vi.fn(),
+  fetchTemplatesMock: vi.fn(),
   saveMock: vi.fn(),
   addImageMock: vi.fn(),
   addPageMock: vi.fn(),
@@ -32,6 +34,7 @@ let originalRevokeObjectURL: RevokeObjectURL | undefined;
 
 vi.mock('../../services/apiService', () => ({
   fetchProducts: fetchProductsMock,
+  fetchTemplates: fetchTemplatesMock,
 }));
 
 vi.mock('jspdf', () => {
@@ -75,6 +78,20 @@ describe('LineOperator PDF generation', () => {
         qrData: 'https://example.com/MILK-001',
         unit: 'л',
         metadata: {},
+      },
+    ]);
+    fetchTemplatesMock.mockResolvedValue([
+      {
+        id: 'template-1',
+        name: 'Тестовый шаблон',
+        category: 'Молочные продукты',
+        description: 'Универсальный шаблон',
+        thumbnail: '🏷️',
+        elements: [],
+        suitable: ['Молочные продукты', 'Универсальный'],
+        version: '1.0.0',
+        created_at: '2025-01-01T00:00:00Z',
+        updated_at: '2025-01-01T00:00:00Z',
       },
     ]);
     saveMock.mockClear();

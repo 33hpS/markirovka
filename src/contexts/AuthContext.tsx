@@ -9,7 +9,10 @@ import {
 } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { getSupabaseService, isSupabaseAvailable } from '../services/supabaseService';
+import {
+  getSupabaseService,
+  isSupabaseAvailable,
+} from '../services/supabaseService';
 
 interface User {
   id: string;
@@ -53,7 +56,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const supabase = getSupabaseService();
         const currentUser = await supabase.getCurrentUser();
-        
+
         if (currentUser) {
           // TODO: Fetch user profile from database to get role and permissions
           // For now, set basic user data
@@ -120,7 +123,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (error) {
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'Произошла ошибка при входе',
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Произошла ошибка при входе',
         };
       } finally {
         setIsLoading(false);
