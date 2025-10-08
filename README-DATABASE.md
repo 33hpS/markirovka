@@ -94,14 +94,15 @@ cp src/pages/ProductsTest.tsx src/pages/Products.tsx
 ```typescript
 import { dataService } from '../services/dataService';
 
-// Заменить mock данные
+// Загрузка продуктов из базы данных
 const loadProducts = async () => {
   try {
     const products = await dataService.getProducts();
     setProducts(products);
   } catch (error) {
-    // Fallback к существующим mock данным
-    console.error('Database error, using mock data:', error);
+    console.error('Database error:', error);
+    setError('Не удалось загрузить продукты');
+    setProducts([]);
   }
 };
 ```
@@ -172,4 +173,7 @@ console.log('Connection test:', { data, error });
 ---
 
 _Все сервисы протестированы и готовы к интеграции. База данных развернута и содержит тестовые
-данные. Компоненты поддерживают как подключение к базе, так и fallback к mock данным._
+данные. Приложение полностью интегрировано с Supabase и работает только с реальными данными._
+
+⚠️ **Важно:** Mock данные удалены. Для работы приложения необходима настроенная Supabase база
+данных.

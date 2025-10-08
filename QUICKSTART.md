@@ -35,9 +35,9 @@ supabase login
 supabase db push --db-url "postgresql://postgres:[YOUR_PASSWORD]@db.wjclhytzewfcalyybhab.supabase.co:5432/postgres"
 ```
 
-### 2️⃣ Настройка аутентификации Supabase (опционально)
+### 2️⃣ Настройка аутентификации Supabase (обязательно)
 
-Если хотите заменить mock-аутентификацию на настоящую:
+⚠️ **Важно:** Приложение использует реальную Supabase аутентификацию. Mock данные удалены.
 
 1. Откройте https://supabase.com/dashboard/project/wjclhytzewfcalyybhab/auth/providers
 2. Включите провайдер **Email** (вкладка Email Auth)
@@ -45,12 +45,26 @@ supabase db push --db-url "postgresql://postgres:[YOUR_PASSWORD]@db.wjclhytzewfc
    - **Site URL**: `https://markirovka.sherhan1988hp.workers.dev`
    - **Redirect URLs**: добавьте `https://markirovka.sherhan1988hp.workers.dev/dashboard`
 
-4. Создайте тестового пользователя:
+4. Создайте пользователей:
    - Перейдите в **Authentication → Users**
    - Нажмите **Add user → Create new user**
-   - Email: `admin@markirovka.ru`
-   - Password: `admin123`
-   - Подтвердите email автоматически
+
+   **Рекомендуемые пользователи:**
+   - Admin: `admin@markirovka.ru` / `admin123` (роль: admin)
+   - Manager: `manager@markirovka.ru` / `manager123` (роль: manager)
+   - Worker: `worker@markirovka.ru` / `worker123` (роль: worker)
+
+5. Установите роли в user_metadata:
+   - Откройте пользователя → Raw user meta data
+   - Добавьте JSON:
+   ```json
+   {
+     "firstName": "Имя",
+     "lastName": "Фамилия",
+     "role": "admin",
+     "permissions": ["users.manage", "system.config", "audit.view"]
+   }
+   ```
 
 ### 3️⃣ Проверка подключения
 
@@ -80,9 +94,10 @@ npm run dev
 # Откройте http://localhost:5173
 ```
 
-**Тестовые учетные данные (mock auth):**
+**Учетные данные:**
 
-- Admin: `admin` / `admin123`
+Используйте пользователей, созданных в Supabase Dashboard (шаг 2️⃣)
+
 - Manager: `manager` / `manager123`
 - Worker: `worker` / `worker123`
 
@@ -114,10 +129,11 @@ markirovka/
 │   ├── config/
 │   │   └── config.ts        ← Конфигурация (читает .env)
 │   ├── services/
-│   │   ├── dataService.ts   ← Supabase интеграция
-│   │   └── printService.ts  ← R2 интеграция
+│   │   ├── dataService.ts   ← Работа с данными
+│   │   ├── supabaseService.ts ← Supabase интеграция
+│   │   └── r2Service.ts     ← R2 интеграция
 │   └── contexts/
-│       └── AuthContext.tsx  ← Mock аутентификация
+│       └── AuthContext.tsx  ← Supabase аутентификация
 └── worker.js               ← Cloudflare Worker (R2 API)
 ```
 
@@ -132,7 +148,7 @@ markirovka/
 | R2 Download API   | ✅ Работает      | GET /api/r2/file?key=...                     |
 | Supabase Database | ⚠️ Требует init  | https://wjclhytzewfcalyybhab.supabase.co     |
 | Environment       | ✅ Настроен      | .env.local                                   |
-| Authentication    | ✅ Mock работает | Готово к Supabase Auth                       |
+| Authentication    | ✅ Supabase Auth | Реальная аутентификация (моки удалены)       |
 
 ---
 

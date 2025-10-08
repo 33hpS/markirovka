@@ -16,9 +16,6 @@ interface Batch {
   createdAt: string;
 }
 
-// Демо данные удалены - данные будут загружаться из API
-const mockBatches: Batch[] = [];
-
 const statusLabels = {
   planning: 'Планирование',
   production: 'Производство',
@@ -36,7 +33,7 @@ const statusColors = {
 };
 
 const Production: React.FC = () => {
-  const [batches, setBatches] = useState<Batch[]>(mockBatches);
+  const [batches, setBatches] = useState<Batch[]>([]);
   const [showNewBatch, setShowNewBatch] = useState(false);
 
   const updateBatchStatus = (id: string, newStatus: Batch['status']) => {
