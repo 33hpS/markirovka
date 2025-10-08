@@ -85,6 +85,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Удаляем старые триггеры если они существуют
+DROP TRIGGER IF EXISTS update_categories_updated_at ON categories;
+DROP TRIGGER IF EXISTS update_products_updated_at ON products;
+DROP TRIGGER IF EXISTS update_label_templates_updated_at ON label_templates;
+DROP TRIGGER IF EXISTS update_batches_updated_at ON batches;
+
+-- Создаём триггеры заново
 CREATE TRIGGER update_categories_updated_at
     BEFORE UPDATE ON categories
     FOR EACH ROW
@@ -155,6 +162,13 @@ ALTER TABLE products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE label_templates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE batches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE production_logs ENABLE ROW LEVEL SECURITY;
+
+-- Удаляем старые политики если они существуют
+DROP POLICY IF EXISTS "Allow all for authenticated users" ON categories;
+DROP POLICY IF EXISTS "Allow all for authenticated users" ON products;
+DROP POLICY IF EXISTS "Allow all for authenticated users" ON label_templates;
+DROP POLICY IF EXISTS "Allow all for authenticated users" ON batches;
+DROP POLICY IF EXISTS "Allow all for authenticated users" ON production_logs;
 
 -- Политики доступа (пока разрешаем все для аутентифицированных пользователей)
 CREATE POLICY "Allow all for authenticated users" ON categories FOR ALL USING (true);
