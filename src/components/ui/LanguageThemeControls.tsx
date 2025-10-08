@@ -8,6 +8,7 @@ import { useTheme } from '../../hooks/useTheme';
 interface LanguageThemeControlsProps {
   isMobile?: boolean;
   onSelect?: () => void;
+  darkHeader?: boolean; // Для использования в темной шапке WMS
 }
 
 const languages: Array<{ code: Language; name: string; flag: string }> = [
@@ -19,6 +20,7 @@ const languages: Array<{ code: Language; name: string; flag: string }> = [
 export function LanguageThemeControls({
   isMobile = false,
   onSelect,
+  darkHeader = false,
 }: LanguageThemeControlsProps) {
   const { language, setLanguage, t } = useLanguage();
   const { theme, setTheme } = useTheme();
@@ -118,6 +120,11 @@ export function LanguageThemeControls({
   }
 
   // Десктопная версия с выпадающими списками
+  // Стили для темной шапки (WMS-стиль)
+  const selectClass = darkHeader
+    ? 'bg-sky-800/60 border border-white/20 text-white rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 cursor-pointer hover:bg-sky-800/80 transition-colors [&>option]:bg-gray-800 [&>option]:text-white'
+    : 'bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-200 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 [&>option]:bg-white [&>option]:text-gray-900 dark:[&>option]:bg-gray-800 dark:[&>option]:text-white';
+
   return (
     <div className={containerClass}>
       <div className={sectionClass}>
@@ -128,7 +135,7 @@ export function LanguageThemeControls({
           id='language-select'
           value={language}
           onChange={e => setLanguage(e.target.value as Language)}
-          className='bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-gray-200'
+          className={selectClass}
         >
           {languages.map(lang => (
             <option key={lang.code} value={lang.code}>
@@ -146,7 +153,7 @@ export function LanguageThemeControls({
           id='theme-select'
           value={theme}
           onChange={e => setTheme(e.target.value as Theme)}
-          className='bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-gray-200'
+          className={selectClass}
         >
           <option value='light'>☀️ {t.lightTheme}</option>
           <option value='dark'>🌙 {t.darkTheme}</option>

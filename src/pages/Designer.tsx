@@ -1,30 +1,16 @@
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { useLanguage } from '../hooks/useLanguage';
-import { PDFExportService } from '../services/pdfExportService';
-
-interface Product {
-  id: string;
-  name: string;
-  sku: string;
-  price: number;
-  category: string;
-  description: string;
-  manufacturer: string;
-  weight: string;
-  expiryDate: string;
-  batchNumber: string;
-  barcode: string;
-  qrData: string;
-}
+import { useRealtimeSync } from '../hooks/useRealtime';
+import * as api from '../services/apiService';
+import { generatePreview } from '../utils/templatePreview';
 
 interface DesignElement {
   id: string;
   type: 'text' | 'qr' | 'image' | 'barcode';
   content: string;
-  dataBinding?: string | undefined; // Привязка к данным продукта
+  dataBinding?: string;
   x: number;
   y: number;
   width: number;
@@ -40,26 +26,28 @@ interface LabelTemplate {
   description: string;
   version?: string;
   elements: DesignElement[];
-  suitableFor: string[]; // Подходящие категории продуктов
+  suitableFor: string[];
   thumbnail: string;
+  createdAt?: string | undefined;
+  updatedAt?: string | undefined;
 }
 
-// Шаблоны этикеток
-const labelTemplates: LabelTemplate[] = [
+// Готовые шаблоны этикеток (сокращенный список для примера)
+const defaultTemplates: LabelTemplate[] = [
   {
     id: 'dairy-basic',
     name: 'Молочные продукты - Базовый',
     category: 'Молочные продукты',
-    description:
-      'Простая этикетка для молочных продуктов с основной информацией',
+    description: 'Простая этикетка для молочных продуктов',
     version: '2.1.0',
     suitableFor: ['Молочные продукты'],
     thumbnail: '🥛',
+    createdAt: '2025-01-15',
     elements: [
       {
         id: '1',
         type: 'text',
-        content: 'Название продукта',
+        content: 'Название',
         dataBinding: 'name',
         x: 10,
         y: 10,
@@ -70,32 +58,8 @@ const labelTemplates: LabelTemplate[] = [
       },
       {
         id: '2',
-        type: 'text',
-        content: 'Производитель',
-        dataBinding: 'manufacturer',
-        x: 10,
-        y: 40,
-        width: 150,
-        height: 18,
-        fontSize: 12,
-        color: '#4a5568',
-      },
-      {
-        id: '3',
-        type: 'text',
-        content: 'Срок годности',
-        dataBinding: 'expiryDate',
-        x: 10,
-        y: 65,
-        width: 120,
-        height: 16,
-        fontSize: 11,
-        color: '#e53e3e',
-      },
-      {
-        id: '4',
         type: 'qr',
-        content: 'QR-код',
+        content: 'QR',
         dataBinding: 'qrData',
         x: 220,
         y: 10,
@@ -105,13 +69,14 @@ const labelTemplates: LabelTemplate[] = [
     ],
   },
   {
-    id: 'bread-detailed',
-    name: 'Хлебобулочные - Детальный',
+    id: 'bakery-basic',
+    name: 'Хлебобулочные изделия - Базовый',
     category: 'Хлебобулочные изделия',
-    description: 'Подробная этикетка для хлеба с акцентом на свежести',
-    version: '1.3.2',
+    description: 'Стандартная этикетка для хлеба',
+    version: '1.5.0',
     suitableFor: ['Хлебобулочные изделия'],
     thumbnail: '🍞',
+    createdAt: '2025-01-20',
     elements: [
       {
         id: '1',
@@ -120,1291 +85,798 @@ const labelTemplates: LabelTemplate[] = [
         dataBinding: 'name',
         x: 10,
         y: 10,
-        width: 180,
-        height: 22,
-        fontSize: 14,
+        width: 200,
+        height: 24,
+        fontSize: 15,
         color: '#744210',
       },
       {
         id: '2',
-        type: 'text',
-        content: 'Вес',
-        dataBinding: 'weight',
-        x: 200,
-        y: 10,
-        width: 60,
-        height: 20,
-        fontSize: 12,
-        color: '#1a202c',
-      },
-      {
-        id: '3',
-        type: 'text',
-        content: 'Срок годности',
-        dataBinding: 'expiryDate',
-        x: 10,
-        y: 40,
-        width: 100,
-        height: 18,
-        fontSize: 11,
-        color: '#e53e3e',
-      },
-      {
-        id: '4',
-        type: 'text',
-        content: 'Партия',
-        dataBinding: 'batchNumber',
-        x: 120,
-        y: 40,
-        width: 90,
-        height: 16,
-        fontSize: 10,
-        color: '#4a5568',
-      },
-      {
-        id: '5',
         type: 'barcode',
         content: 'Штрих-код',
         dataBinding: 'barcode',
         x: 10,
-        y: 65,
-        width: 150,
-        height: 25,
-      },
-    ],
-  },
-  {
-    id: 'universal-compact',
-    name: 'Универсальный - Компактный',
-    category: 'Универсальный',
-    description: 'Компактная этикетка для любых продуктов',
-    version: '1.0.5',
-    suitableFor: ['Молочные продукты', 'Хлебобулочные изделия', 'Другое'],
-    thumbnail: '📦',
-    elements: [
-      {
-        id: '1',
-        type: 'text',
-        content: 'Продукт',
-        dataBinding: 'name',
-        x: 10,
-        y: 10,
-        width: 140,
-        height: 20,
-        fontSize: 13,
-        color: '#1a202c',
-      },
-      {
-        id: '2',
-        type: 'text',
-        content: 'Цена',
-        dataBinding: 'price',
-        x: 160,
-        y: 10,
-        width: 60,
-        height: 20,
-        fontSize: 13,
-        color: '#38a169',
-      },
-      {
-        id: '3',
-        type: 'qr',
-        content: 'QR',
-        dataBinding: 'qrData',
-        x: 230,
-        y: 10,
-        width: 60,
-        height: 60,
-      },
-      {
-        id: '4',
-        type: 'text',
-        content: 'SKU',
-        dataBinding: 'sku',
-        x: 10,
-        y: 35,
-        width: 80,
-        height: 16,
-        fontSize: 10,
-        color: '#4a5568',
-      },
-    ],
-  },
-  {
-    id: 'premium-detailed',
-    name: 'Премиум - Подробный',
-    category: 'Премиум',
-    description: 'Детальная этикетка с полной информацией о продукте',
-    version: '3.0.1',
-    suitableFor: ['Молочные продукты'],
-    thumbnail: '⭐',
-    elements: [
-      {
-        id: '1',
-        type: 'text',
-        content: 'Название',
-        dataBinding: 'name',
-        x: 10,
-        y: 10,
-        width: 200,
-        height: 22,
-        fontSize: 15,
-        color: '#1a365d',
-      },
-      {
-        id: '2',
-        type: 'text',
-        content: 'Описание',
-        dataBinding: 'description',
-        x: 10,
-        y: 35,
-        width: 200,
-        height: 30,
-        fontSize: 10,
-        color: '#4a5568',
-      },
-      {
-        id: '3',
-        type: 'text',
-        content: 'Производитель',
-        dataBinding: 'manufacturer',
-        x: 10,
-        y: 70,
-        width: 140,
-        fontSize: 11,
-        height: 16,
-        color: '#2d3748',
-      },
-      {
-        id: '4',
-        type: 'text',
-        content: 'Вес',
-        dataBinding: 'weight',
-        x: 160,
-        y: 70,
-        width: 50,
-        height: 16,
-        fontSize: 11,
-        color: '#2d3748',
-      },
-      {
-        id: '5',
-        type: 'text',
-        content: 'Срок годности',
-        dataBinding: 'expiryDate',
-        x: 10,
-        y: 90,
-        width: 100,
-        height: 16,
-        fontSize: 11,
-        color: '#e53e3e',
-      },
-      {
-        id: '6',
-        type: 'text',
-        content: 'Партия',
-        dataBinding: 'batchNumber',
-        x: 120,
-        y: 90,
-        width: 90,
-        height: 16,
-        fontSize: 9,
-        color: '#718096',
-      },
-      {
-        id: '7',
-        type: 'qr',
-        content: 'QR-код',
-        dataBinding: 'qrData',
-        x: 220,
-        y: 35,
-        width: 70,
-        height: 70,
-      },
-      {
-        id: '8',
-        type: 'text',
-        content: 'Цена',
-        dataBinding: 'price',
-        x: 10,
-        y: 115,
-        width: 80,
-        height: 20,
-        fontSize: 14,
-        color: '#38a169',
-      },
-      {
-        id: '9',
-        type: 'barcode',
-        content: 'Штрих-код',
-        dataBinding: 'barcode',
-        x: 100,
-        y: 115,
-        width: 120,
-        height: 20,
+        y: 105,
+        width: 190,
+        height: 45,
       },
     ],
   },
 ];
 
-// Мок данные продуктов
-const mockProducts: Product[] = [
-  {
-    id: '1',
-    name: 'Молоко цельное 3.2%',
-    sku: 'MILK-032-1L',
-    price: 89.9,
-    category: 'Молочные продукты',
-    description: 'Натуральное цельное молоко 3.2% жирности',
-    manufacturer: 'ООО "Молочная ферма"',
-    weight: '1 л',
-    expiryDate: '2025-10-15',
-    batchNumber: 'БП-2025-10-04-001',
-    barcode: '4607034376453',
-    qrData: 'https://milk-farm.ru/product/milk-032-1l?batch=БП-2025-10-04-001',
-  },
-  {
-    id: '2',
-    name: 'Хлеб белый нарезной',
-    sku: 'BREAD-WHITE-500G',
-    price: 45.5,
-    category: 'Хлебобулочные изделия',
-    description: 'Хлеб пшеничный белый нарезной',
-    manufacturer: 'Хлебозавод №1',
-    weight: '500 г',
-    expiryDate: '2025-10-06',
-    batchNumber: 'ХБ-2025-10-04-015',
-    barcode: '4607034587432',
-    qrData:
-      'https://bread-factory.ru/product/white-bread-500g?batch=ХБ-2025-10-04-015',
-  },
-  {
-    id: '3',
-    name: 'Сыр российский',
-    sku: 'CHEESE-RUS-200G',
-    price: 155.0,
-    category: 'Молочные продукты',
-    description: 'Сыр российский твердый 50% жирности',
-    manufacturer: 'Сырзавод "Традиция"',
-    weight: '200 г',
-    expiryDate: '2025-11-04',
-    batchNumber: 'СР-2025-10-03-007',
-    barcode: '4607034912345',
-    qrData:
-      'https://cheese-tradition.ru/product/russian-cheese-200g?batch=СР-2025-10-03-007',
-  },
-];
-
-// Доступные поля для привязки
-const productFields = [
-  { key: 'name', label: 'Название продукта' },
-  { key: 'sku', label: 'Артикул (SKU)' },
-  { key: 'price', label: 'Цена' },
-  { key: 'category', label: 'Категория' },
-  { key: 'description', label: 'Описание' },
-  { key: 'manufacturer', label: 'Производитель' },
-  { key: 'weight', label: 'Вес/Объем' },
-  { key: 'expiryDate', label: 'Срок годности' },
-  { key: 'batchNumber', label: 'Номер партии' },
-  { key: 'barcode', label: 'Штрих-код' },
-  { key: 'qrData', label: 'QR-код данные' },
-];
-
-const DesignerInteractive: React.FC = () => {
-  const { t } = useLanguage();
-  const [selectedProduct, setSelectedProduct] = useState<Product>(
-    () =>
-      mockProducts[0] ?? {
-        id: '1',
-        name: 'Молоко цельное 3.2%',
-        sku: 'MILK-032-1L',
-        price: 89.9,
-        category: 'Молочные продукты',
-        description: 'Натуральное цельное молоко 3.2% жирности',
-        manufacturer: 'ООО "Молочная ферма"',
-        weight: '1 л',
-        expiryDate: '2025-10-15',
-        batchNumber: 'БП-2025-10-04-001',
-        barcode: '4607034376453',
-        qrData:
-          'https://milk-farm.ru/product/milk-032-1l?batch=БП-2025-10-04-001',
-      }
-  );
-
-  const [selectedTemplate, setSelectedTemplate] =
-    useState<LabelTemplate | null>(null);
-  const [elements, setElements] = useState<DesignElement[]>([]);
-  const [selectedElement, setSelectedElement] = useState<string | null>(null);
-  const [canvasSize] = useState({ width: 320, height: 200 }); // 80x50mm at 4px/mm
-
+const Designer: React.FC = () => {
   const navigate = useNavigate();
+  const [templates, setTemplates] = useState<LabelTemplate[]>(defaultTemplates);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(
+    null
+  );
+  const [editingTemplate, setEditingTemplate] = useState<LabelTemplate | null>(
+    null
+  );
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newTemplate, setNewTemplate] = useState({
+    name: '',
+    category: 'Молочные продукты',
+    description: '',
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Проверяем, нужно ли создать новый шаблон
-  useEffect(() => {
-    const shouldCreateNew = localStorage.getItem('createNewTemplate');
-    if (shouldCreateNew === 'true') {
-      // Удаляем флаг
-      localStorage.removeItem('createNewTemplate');
-
-      // Создаем пустой шаблон для редактирования
-      const newTemplate: LabelTemplate = {
-        id: `custom-${Date.now()}`,
-        name: 'Новый шаблон',
-        category: 'Пользовательский',
-        description: 'Создайте свой уникальный шаблон этикетки',
+  // Функция перезагрузки шаблонов
+  const reloadTemplates = useCallback(async () => {
+    try {
+      const refreshed = await api.fetchTemplates();
+      const converted: LabelTemplate[] = refreshed.map(t => ({
+        id: t.id ?? `temp-${Date.now()}`,
+        name: t.name,
+        category: t.category ?? 'Без категории',
+        description: t.description ?? '',
         version: '1.0.0',
-        elements: [],
-        suitableFor: ['Универсальный'],
-        thumbnail: '✨',
-      };
-
-      setSelectedTemplate(newTemplate);
-      setElements([]);
-      setSelectedElement(null);
+        elements: (t.elements as DesignElement[]) ?? [],
+        suitableFor: [t.category ?? 'Все'],
+        thumbnail: t.thumbnail ?? getCategoryEmoji(t.category ?? ''),
+        createdAt: t.created_at?.split('T')[0],
+        updatedAt: t.updated_at?.split('T')[0],
+      }));
+      setTemplates(converted.length > 0 ? converted : defaultTemplates);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Ошибка перезагрузки шаблонов:', err);
     }
   }, []);
 
-  // Получаем подходящие шаблоны для выбранного продукта
-  const suitableTemplates = labelTemplates.filter(template =>
-    template.suitableFor.includes(selectedProduct.category)
-  );
+  // Подключение realtime для автоматической синхронизации
+  const realtime = useRealtimeSync({
+    templates: true,
+    onTemplateChange: reloadTemplates,
+  });
 
-  // Функция применения шаблона
-  const applyTemplate = (template: LabelTemplate) => {
-    setSelectedTemplate(template);
-    // Создаем копии элементов шаблона с новыми ID
-    const newElements = template.elements.map(element => ({
-      ...element,
-      id: `${template.id}-${element.id}-${Date.now()}`,
-    }));
-    setElements(newElements);
-    setSelectedElement(null);
-  };
+  // Загружаем шаблоны из API при монтировании
+  useEffect(() => {
+    const loadTemplates = async () => {
+      setLoading(true);
+      setError(null);
 
-  // Функция для получения актуального содержимого элемента
-  const getElementContent = (element: DesignElement): string => {
-    if (element.dataBinding && selectedProduct) {
-      const value = selectedProduct[element.dataBinding as keyof Product];
-      if (element.dataBinding === 'price') {
-        return `${value} ₽`;
+      try {
+        const loaded = await api.fetchTemplates();
+
+        // Преобразуем формат API в формат компонента
+        const converted: LabelTemplate[] = loaded.map(t => ({
+          id: t.id ?? `temp-${Date.now()}`,
+          name: t.name,
+          category: t.category ?? 'Без категории',
+          description: t.description ?? '',
+          version: '1.0.0',
+          elements: (t.elements as DesignElement[]) ?? [],
+          suitableFor: [t.category ?? 'Все'],
+          thumbnail: t.thumbnail ?? getCategoryEmoji(t.category ?? ''),
+          createdAt: t.created_at?.split('T')[0],
+          updatedAt: t.updated_at?.split('T')[0],
+        }));
+
+        setTemplates(converted.length > 0 ? converted : defaultTemplates);
+      } catch (err) {
+        const errorMsg =
+          err instanceof Error ? err.message : 'Ошибка загрузки шаблонов';
+        setError(errorMsg);
+        // Fallback на дефолтные шаблоны
+        setTemplates(defaultTemplates);
+      } finally {
+        setLoading(false);
       }
-      return value?.toString() || element.content;
-    }
-    return element.content;
-  };
-
-  const addElement = (type: DesignElement['type']) => {
-    const newElement: DesignElement = {
-      id: Date.now().toString(),
-      type,
-      content:
-        type === 'text'
-          ? 'Новый текст'
-          : type === 'qr'
-            ? 'QR-код'
-            : type === 'barcode'
-              ? 'Штрих-код'
-              : 'Изображение',
-      x: 50,
-      y: 50,
-      width: type === 'text' ? 120 : 60,
-      height: type === 'text' ? 20 : 60,
-      ...(type === 'text' && { fontSize: 12 }),
-      color: '#000000',
     };
-    setElements(prev => [...prev, newElement]);
-    setSelectedElement(newElement.id);
+
+    loadTemplates();
+  }, [reloadTemplates]);
+
+  const getCategoryEmoji = (category: string): string => {
+    if (category.includes('Молочн')) return '🥛';
+    if (category.includes('Хлеб')) return '🍞';
+    if (category.includes('Мясн')) return '🥩';
+    return '📦';
   };
 
-  const updateElement = (id: string, updates: Partial<DesignElement>) => {
-    setElements(prev =>
-      prev.map(el => (el.id === id ? { ...el, ...updates } : el))
-    );
+  const categories = Array.from(new Set(templates.map(t => t.category)));
+
+  const filteredTemplates = templates.filter(template => {
+    const matchesSearch = template.name
+      .toLowerCase()
+      .includes(searchQuery.toLowerCase());
+    const matchesCategory =
+      categoryFilter === 'all' || template.category === categoryFilter;
+    return matchesSearch && matchesCategory;
+  });
+
+  const handleCreateNew = () => {
+    setNewTemplate({
+      name: '',
+      category: categories[0] ?? 'Молочные продукты',
+      description: '',
+    });
+    setShowCreateModal(true);
   };
 
-  const deleteElement = (id: string) => {
-    setElements(prev => prev.filter(el => el.id !== id));
-    setSelectedElement(null);
-  };
-
-  const selectedEl = elements.find(el => el.id === selectedElement);
-
-  // Функции экспорта
-  const handleExportPDF = async () => {
-    try {
-      await PDFExportService.exportLabelToPDF(elements, selectedProduct);
-    } catch (error) {
-      alert(
-        `Ошибка при экспорте PDF: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`
-      );
-    }
-  };
-
-  const handleExportHighQualityPDF = async () => {
-    try {
-      await PDFExportService.exportHighQualityPDF(elements, selectedProduct);
-    } catch (error) {
-      alert(
-        `Ошибка при экспорте высококачественного PDF: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`
-      );
-    }
-  };
-
-  const handleCreatePreview = async () => {
-    try {
-      const previewUrl = await PDFExportService.createPreviewImage(
-        elements,
-        selectedProduct
-      );
-      // Открываем превью в новом окне
-      const newWindow = window.open();
-      if (newWindow) {
-        newWindow.document.write(`
-          <html>
-            <head><title>Превью этикетки - ${selectedProduct.name}</title></head>
-            <body style="margin: 20px; text-align: center;">
-              <h2>Превью этикетки</h2>
-              <p><strong>Продукт:</strong> ${selectedProduct.name} (${selectedProduct.sku})</p>
-              <img src="${previewUrl}" style="border: 1px solid #ccc; max-width: 100%;" />
-              <br><br>
-              <button onclick="window.print()">Печать</button>
-              <button onclick="window.close()">Закрыть</button>
-            </body>
-          </html>
-        `);
-      }
-    } catch (error) {
-      alert(
-        `Ошибка при создании превью: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`
-      );
-    }
-  };
-
-  // Функции для кнопок в шапке
-  const handleSaveTemplate = () => {
-    if (!selectedTemplate) {
-      alert('Сначала выберите шаблон для редактирования или создайте новый');
+  const handleSaveNewTemplate = async () => {
+    if (!newTemplate.name.trim()) {
+      alert('Введите название шаблона');
       return;
     }
 
-    // Для кастомных шаблонов просим ввести имя
-    let templateName = selectedTemplate.name;
-    if (selectedTemplate.id.startsWith('custom-')) {
-      const newName = prompt(
-        'Введите название для вашего шаблона:',
-        selectedTemplate.name
-      );
-      if (!newName || newName.trim() === '') {
-        alert('Название шаблона не может быть пустым');
-        return;
+    setLoading(true);
+
+    try {
+      // Создаем базовые элементы для нового шаблона
+      const baseElements: DesignElement[] = [
+        {
+          id: '1',
+          type: 'text',
+          content: 'Название продукта',
+          dataBinding: 'name',
+          x: 10,
+          y: 10,
+          width: 200,
+          height: 25,
+          fontSize: 16,
+          color: '#000000',
+        },
+        {
+          id: '2',
+          type: 'qr',
+          content: 'QR',
+          dataBinding: 'qrData',
+          x: 220,
+          y: 10,
+          width: 80,
+          height: 80,
+        },
+      ];
+
+      // Создаем временный шаблон для генерации превью
+      const tempTemplate = {
+        id: 'temp',
+        name: newTemplate.name,
+        category: newTemplate.category,
+        description: newTemplate.description,
+        elements: baseElements,
+        version: '1.0.0',
+        suitableFor: [newTemplate.category],
+        thumbnail: getCategoryEmoji(newTemplate.category),
+      };
+
+      // Генерируем превью
+      let thumbnailUrl = getCategoryEmoji(newTemplate.category);
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        thumbnailUrl = await generatePreview(tempTemplate as any);
+      } catch {
+        // Используем emoji если не удалось сгенерировать
       }
-      templateName = newName.trim();
+
+      // Сохраняем в API
+      await api.createTemplate({
+        name: newTemplate.name,
+        category: newTemplate.category,
+        description: newTemplate.description,
+        width: 400,
+        height: 300,
+        elements: baseElements,
+        thumbnail: thumbnailUrl,
+      });
+
+      // Перезагружаем список
+      await reloadTemplates();
+
+      setShowCreateModal(false);
+      alert(
+        'Шаблон успешно создан! Используйте кнопку "Использовать" для редактирования элементов.'
+      );
+    } catch (err) {
+      alert(
+        `Ошибка создания: ${err instanceof Error ? err.message : 'Неизвестная ошибка'}`
+      );
+    } finally {
+      setLoading(false);
     }
-
-    const templateData = {
-      ...selectedTemplate,
-      name: templateName,
-      elements,
-      updatedAt: new Date().toISOString().split('T')[0],
-      version: selectedTemplate.id.startsWith('custom-')
-        ? '1.0.0'
-        : `${parseFloat(selectedTemplate.version ?? '1.0') + 0.1}.0`,
-    };
-
-    const data = JSON.stringify(templateData, null, 2);
-    const blob = new Blob([data], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `template-${templateName.replace(/\s+/g, '-').toLowerCase()}-v${templateData.version}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-
-    alert(`Шаблон "${templateName}" сохранен как JSON файл`);
   };
-  const handlePrintLabel = () => {
-    if (elements.length === 0) {
-      alert('Добавьте элементы на этикетку перед печатью');
+
+  const handleRegenerateAllPreviews = async () => {
+    if (
+      !window.confirm(
+        'Регенерировать превью для всех шаблонов? Это может занять некоторое время.'
+      )
+    ) {
       return;
     }
 
-    // Переходим в раздел Печать с сохраненными данными
-    const printData = {
-      elements,
-      product: selectedProduct,
-      template: selectedTemplate,
+    setLoading(true);
+    let updated = 0;
+
+    try {
+      for (const template of templates) {
+        try {
+          // Генерируем preview
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const thumbnailUrl = await generatePreview(template as any);
+
+          // Обновляем в базе данных
+          if (template.id) {
+            await api.updateTemplate(template.id, {
+              thumbnail: thumbnailUrl,
+            });
+            updated++;
+          }
+        } catch (err) {
+          // Пропускаем шаблоны с ошибками
+          void err;
+        }
+      }
+
+      alert(`Успешно обновлено превью для ${updated} шаблонов`);
+      await reloadTemplates();
+    } catch (err) {
+      alert(
+        `Ошибка регенерации: ${err instanceof Error ? err.message : 'Неизвестная ошибка'}`
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteTemplate = async (id: string) => {
+    const template = templates.find(t => t.id === id);
+    if (
+      !template?.id.startsWith('custom-') &&
+      template?.id.startsWith('dairy-') === false &&
+      template?.id.startsWith('bakery-') === false
+    ) {
+      // Удаляем шаблоны из базы данных
+      try {
+        await api.deleteTemplate(id);
+        setTemplates(prev => prev.filter(t => t.id !== id));
+      } catch (err) {
+        alert(
+          `Ошибка удаления: ${err instanceof Error ? err.message : 'Неизвестная ошибка'}`
+        );
+      }
+    } else {
+      alert('Нельзя удалить базовый шаблон.');
+    }
+    setShowDeleteConfirm(null);
+  };
+
+  const handleUseTemplate = (template: LabelTemplate) => {
+    localStorage.setItem('selectedTemplate', JSON.stringify(template));
+    navigate('/labels');
+  };
+
+  const handleEditTemplate = (template: LabelTemplate) => {
+    setEditingTemplate(template);
+  };
+
+  const handleSaveEdit = async (updatedTemplate: LabelTemplate) => {
+    try {
+      // Генерируем preview изображение
+      let thumbnailUrl = updatedTemplate.thumbnail;
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        thumbnailUrl = await generatePreview(updatedTemplate as any);
+      } catch {
+        // Если не удалось сгенерировать превью, используем emoji
+        thumbnailUrl = getCategoryEmoji(updatedTemplate.category);
+      }
+
+      await api.updateTemplate(updatedTemplate.id, {
+        name: updatedTemplate.name,
+        category: updatedTemplate.category,
+        description: updatedTemplate.description,
+        width: 400,
+        height: 300,
+        elements: updatedTemplate.elements,
+        thumbnail: thumbnailUrl,
+      });
+
+      // Перезагружаем список шаблонов
+      await reloadTemplates();
+      setEditingTemplate(null);
+    } catch (err) {
+      alert(
+        `Ошибка сохранения: ${err instanceof Error ? err.message : 'Неизвестная ошибка'}`
+      );
+    }
+  };
+
+  const handleDuplicateTemplate = async (template: LabelTemplate) => {
+    const duplicated: LabelTemplate = {
+      ...template,
+      id: `custom-${Date.now()}`,
+      name: `${template.name} (копия)`,
+      version: '1.0.0',
+      createdAt: new Date().toISOString().split('T')[0],
+      updatedAt: undefined,
     };
-    localStorage.setItem('printQueue', JSON.stringify([printData]));
-    navigate('/printing');
+
+    // Генерируем preview изображение для дубликата
+    let thumbnailUrl = template.thumbnail;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      thumbnailUrl = await generatePreview(duplicated as any);
+    } catch {
+      // Если не удалось сгенерировать превью, используем emoji
+      thumbnailUrl = getCategoryEmoji(duplicated.category);
+    }
+
+    // Сохраняем в API
+    try {
+      await api.createTemplate({
+        name: duplicated.name,
+        category: duplicated.category,
+        description: duplicated.description,
+        width: 400,
+        height: 300,
+        elements: duplicated.elements,
+        thumbnail: thumbnailUrl,
+      });
+
+      // Перезагружаем список шаблонов
+      await reloadTemplates();
+    } catch (err) {
+      alert(
+        `Ошибка дублирования: ${err instanceof Error ? err.message : 'Неизвестная ошибка'}`
+      );
+    }
   };
 
   return (
     <div className='w-full min-h-screen bg-gray-50 dark:bg-gray-900'>
       <div className='w-full px-4 sm:px-6 lg:px-8 py-6'>
-        <div className='flex justify-between items-center mb-6'>
+        <div className='mb-6 flex items-start justify-between'>
           <div>
             <h1 className='text-3xl font-bold text-gray-900 dark:text-gray-100'>
-              {t.designerTitle}
+              Шаблоны этикеток
             </h1>
-            {selectedTemplate?.id.startsWith('custom-') && (
-              <p className='text-sm text-green-600 dark:text-green-400 mt-1'>
-                ✨ {t.templateCreationHint}
-              </p>
-            )}
+            <p className='text-gray-600 dark:text-gray-400 mt-2'>
+              Управление готовыми шаблонами для создания этикеток
+            </p>
           </div>
-          <div className='flex gap-3'>
-            <button
-              onClick={handleSaveTemplate}
-              className='px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700'
-            >
-              {t.saveTemplate}
-            </button>
-            <button
-              onClick={handlePrintLabel}
-              className='px-4 py-2 bg-green-600 dark:bg-green-500 text-white rounded-md hover:bg-green-500 dark:hover:bg-green-400'
-            >
-              {t.printLabel}
-            </button>
-          </div>
-        </div>{' '}
-        {/* Шаг 1: Выбор продукта */}
-        <div className='bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6'>
-          <h2 className='text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100'>
-            Шаг 1: Выберите продукт
-          </h2>
-          <div className='grid md:grid-cols-3 gap-4'>
-            {mockProducts.map(product => (
-              <div
-                key={product.id}
-                role='button'
-                tabIndex={0}
-                onClick={() => setSelectedProduct(product)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    setSelectedProduct(product);
-                  }
-                }}
-                className={`p-4 border rounded-lg cursor-pointer transition ${
-                  selectedProduct.id === product.id
-                    ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20'
-                    : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500 bg-white dark:bg-gray-800'
-                }`}
-              >
-                <div className='flex justify-between items-start mb-2'>
-                  <h3 className='font-medium text-sm'>{product.name}</h3>
-                  <span className='text-xs bg-gray-100 px-2 py-1 rounded'>
-                    {product.category}
-                  </span>
-                </div>
-                <div className='text-xs text-gray-600 space-y-1'>
-                  <div>
-                    <strong>SKU:</strong> {product.sku}
-                  </div>
-                  <div>
-                    <strong>Цена:</strong> {product.price} ₽
-                  </div>
-                  <div>
-                    <strong>Производитель:</strong> {product.manufacturer}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-        {/* Шаг 2: Выбор шаблона */}
-        <div className='bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6'>
-          <h2 className='text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100'>
-            Шаг 2: Выберите шаблон этикетки
-            <span className='text-sm font-normal text-gray-600 ml-2'>
-              (подходящие для: {selectedProduct.category})
-            </span>
-          </h2>
 
-          {/* Кастомный шаблон (если создается) */}
-          {selectedTemplate?.id.startsWith('custom-') && (
-            <div className='mb-6 p-4 bg-green-50 border border-green-200 rounded-lg'>
-              <h3 className='font-medium text-green-800 mb-2'>
-                🎨 Создание нового шаблона
-              </h3>
-              <p className='text-sm text-green-700 mb-3'>
-                Вы создаете новый шаблон с нуля. Используйте инструменты справа
-                для добавления элементов.
-              </p>
-              <div className='grid md:grid-cols-1 gap-4'>
-                <div className='p-4 border-2 border-green-300 rounded-lg bg-white'>
-                  <div className='text-center mb-3'>
-                    <div className='text-3xl mb-2'>
-                      {selectedTemplate.thumbnail}
-                    </div>
-                    <h3 className='font-medium text-sm'>
-                      {selectedTemplate.name}
-                    </h3>
-                  </div>
-                  <p className='text-xs text-gray-600 text-center'>
-                    {selectedTemplate.description}
-                  </p>
-                  <div className='mt-3 text-center'>
-                    <span className='text-xs bg-green-100 text-green-800 px-2 py-1 rounded'>
-                      {elements.length} элементов
-                    </span>
-                  </div>
-                </div>
+          {/* Realtime индикатор */}
+          {realtime.isConnected && (
+            <div className='flex items-center gap-2 text-sm'>
+              <div className='flex items-center gap-1.5'>
+                <div className='w-2 h-2 bg-green-500 rounded-full animate-pulse'></div>
+                <span className='text-gray-600 dark:text-gray-400'>
+                  Синхронизация
+                </span>
               </div>
             </div>
           )}
+        </div>
 
-          <div className='grid md:grid-cols-2 lg:grid-cols-4 gap-4'>
-            {suitableTemplates.map(template => (
+        {/* Индикатор загрузки */}
+        {loading && (
+          <div className='bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6'>
+            <div className='flex items-center'>
+              <div className='animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 mr-3'></div>
+              <span className='text-blue-800 dark:text-blue-300'>
+                Загрузка шаблонов...
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Ошибка загрузки */}
+        {error && (
+          <div className='bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 mb-6'>
+            <div className='flex items-center'>
+              <svg
+                className='w-5 h-5 text-yellow-600 mr-3'
+                fill='none'
+                stroke='currentColor'
+                viewBox='0 0 24 24'
+              >
+                <path
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  strokeWidth={2}
+                  d='M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z'
+                />
+              </svg>
+              <div>
+                <span className='text-yellow-800 dark:text-yellow-300 font-semibold'>
+                  Ошибка загрузки:{' '}
+                </span>
+                <span className='text-yellow-700 dark:text-yellow-400'>
+                  {error} (используются локальные шаблоны)
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className='bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 mb-6'>
+          <div className='flex flex-col md:flex-row gap-4'>
+            <div className='flex-1'>
+              <input
+                type='text'
+                placeholder='Поиск шаблонов...'
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className='w-full px-4 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500'
+              />
+            </div>
+            <div>
+              <select
+                value={categoryFilter}
+                onChange={e => setCategoryFilter(e.target.value)}
+                className='w-full md:w-auto px-4 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500'
+              >
+                <option value='all'>Все категории</option>
+                {categories.map(category => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <button
+                onClick={handleCreateNew}
+                className='w-full md:w-auto bg-indigo-600 text-white px-6 py-2 rounded-md hover:bg-indigo-700 flex items-center gap-2'
+              >
+                <span>✨</span>
+                <span>Создать новый</span>
+              </button>
+            </div>
+            <div>
+              <button
+                onClick={handleRegenerateAllPreviews}
+                disabled={loading}
+                className='w-full md:w-auto bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2'
+                title='Регенерировать превью для всех шаблонов'
+              >
+                <span>🖼️</span>
+                <span>Обновить превью</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className='mb-4 text-sm text-gray-600 dark:text-gray-400'>
+          Найдено шаблонов: {filteredTemplates.length}
+        </div>
+
+        {filteredTemplates.length === 0 ? (
+          <div className='bg-white dark:bg-gray-800 rounded-lg shadow-sm p-12 text-center'>
+            <div className='text-6xl mb-4'>📋</div>
+            <h3 className='text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2'>
+              Шаблоны не найдены
+            </h3>
+          </div>
+        ) : (
+          <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'>
+            {filteredTemplates.map(template => (
               <div
                 key={template.id}
-                role='button'
-                tabIndex={0}
-                onClick={() => applyTemplate(template)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    applyTemplate(template);
-                  }
-                }}
-                className={`p-4 border rounded-lg cursor-pointer transition hover:border-indigo-300 ${
-                  selectedTemplate?.id === template.id
-                    ? 'border-indigo-500 bg-indigo-50'
-                    : 'border-gray-200'
-                }`}
+                className='bg-white dark:bg-gray-800 rounded-lg shadow-sm hover:shadow-md transition-shadow border border-gray-200 dark:border-gray-700'
               >
-                <div className='text-center mb-3'>
-                  <div className='text-3xl mb-2'>{template.thumbnail}</div>
-                  <h3 className='font-medium text-sm'>{template.name}</h3>
+                <div className='bg-gradient-to-br from-indigo-50 to-blue-50 dark:from-gray-700 dark:to-gray-800 p-6 rounded-t-lg flex items-center justify-center min-h-[160px] relative overflow-hidden'>
+                  {template.thumbnail?.startsWith('data:') ||
+                  template.thumbnail?.startsWith('http') ||
+                  template.thumbnail?.startsWith('/api/') ? (
+                    <img
+                      src={template.thumbnail}
+                      alt={template.name}
+                      className='w-full h-full object-contain'
+                      loading='eager'
+                      decoding='async'
+                    />
+                  ) : (
+                    <div className='text-6xl'>{template.thumbnail}</div>
+                  )}
                 </div>
-                <p className='text-xs text-gray-600 text-center'>
-                  {template.description}
-                </p>
-                <div className='mt-3 text-center'>
-                  <span className='text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded'>
-                    {template.elements.length} элементов
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {suitableTemplates.length === 0 && (
-            <div className='text-center py-8 text-gray-500'>
-              <p>
-                Нет подходящих шаблонов для категории &quot;
-                {selectedProduct.category}&quot;
-              </p>
-              <p className='text-sm mt-2'>
-                Используйте универсальный шаблон или создайте свой
-              </p>
-            </div>
-          )}
-
-          {/* Универсальные шаблоны */}
-          <div className='mt-6 pt-6 border-t'>
-            <h3 className='font-medium mb-3 text-gray-700'>
-              Универсальные шаблоны
-            </h3>
-            <div className='grid md:grid-cols-2 lg:grid-cols-4 gap-4'>
-              {labelTemplates
-                .filter(
-                  template =>
-                    template.suitableFor.includes('Универсальный') ||
-                    template.category === 'Универсальный'
-                )
-                .map(template => (
-                  <div
-                    key={template.id}
-                    role='button'
-                    tabIndex={0}
-                    onClick={() => applyTemplate(template)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        applyTemplate(template);
-                      }
-                    }}
-                    className={`p-4 border rounded-lg cursor-pointer transition hover:border-indigo-300 ${
-                      selectedTemplate?.id === template.id
-                        ? 'border-indigo-500 bg-indigo-50'
-                        : 'border-gray-200'
-                    }`}
-                  >
-                    <div className='text-center mb-3'>
-                      <div className='text-3xl mb-2'>{template.thumbnail}</div>
-                      <h3 className='font-medium text-sm'>{template.name}</h3>
-                    </div>
-                    <p className='text-xs text-gray-600 text-center'>
-                      {template.description}
-                    </p>
-                  </div>
-                ))}
-            </div>
-          </div>
-        </div>
-        {/* Редактор этикетки (показывается только если выбран шаблон) */}
-        {selectedTemplate && (
-          <div className='grid lg:grid-cols-4 gap-6'>
-            {/* Tools Panel */}
-            <div className='lg:col-span-1'>
-              <div className='bg-white dark:bg-gray-800 rounded-lg shadow p-4 mb-4'>
-                <h3 className='font-medium mb-3 text-gray-900 dark:text-gray-100'>
-                  {t.tools}
-                </h3>
-                <div className='space-y-2'>
-                  <button
-                    onClick={() => addElement('text')}
-                    className='w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800'
-                  >
-                    📝 {t.addText}
-                  </button>
-                  <button
-                    onClick={() => addElement('qr')}
-                    className='w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800'
-                  >
-                    📱 {t.addQR}
-                  </button>
-                  <button
-                    onClick={() => addElement('barcode')}
-                    className='w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800'
-                  >
-                    📊 {t.addBarcode}
-                  </button>
-                  <button
-                    onClick={() => addElement('image')}
-                    className='w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800'
-                  >
-                    🖼️ {t.addImage}
-                  </button>
-                </div>
-              </div>
-
-              {/* Properties Panel */}
-              {selectedEl && (
-                <div className='bg-white dark:bg-gray-800 rounded-lg shadow p-4'>
-                  <h3 className='font-medium mb-3 text-gray-900 dark:text-gray-100'>
-                    {t.elementProperties}
-                  </h3>
-                  <div className='space-y-3'>
-                    <div>
-                      <label
-                        htmlFor='content-input'
-                        className='block text-sm font-medium text-gray-700 mb-1'
-                      >
-                        Содержимое
-                      </label>
-                      <input
-                        id='content-input'
-                        type='text'
-                        value={selectedEl.content}
-                        onChange={e =>
-                          updateElement(selectedEl.id, {
-                            content: e.target.value,
-                          })
-                        }
-                        className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500'
-                      />
-                    </div>
-
-                    {/* Привязка к данным */}
-                    <div>
-                      <label
-                        htmlFor='data-binding-select'
-                        className='block text-sm font-medium text-gray-700 mb-1'
-                      >
-                        Привязка к данным продукта
-                      </label>
-                      <select
-                        id='data-binding-select'
-                        value={selectedEl.dataBinding ?? ''}
-                        onChange={e => {
-                          const value = e.target.value;
-                          updateElement(selectedEl.id, {
-                            dataBinding: value === '' ? undefined : value,
-                          });
-                        }}
-                        className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500'
-                      >
-                        <option value=''>Без привязки</option>
-                        {productFields.map(field => (
-                          <option key={field.key} value={field.key}>
-                            {field.label}
-                          </option>
-                        ))}
-                      </select>
-                      {selectedEl.dataBinding && (
-                        <div className='mt-2 p-2 bg-green-50 border border-green-200 rounded text-xs'>
-                          <strong>Предпросмотр:</strong>{' '}
-                          {getElementContent(selectedEl)}
-                        </div>
-                      )}
-                    </div>
-
-                    {selectedEl.type === 'text' && (
-                      <>
-                        <div>
-                          <label
-                            htmlFor='font-size-input'
-                            className='block text-sm font-medium text-gray-700 mb-1'
-                          >
-                            Размер шрифта
-                          </label>
-                          <input
-                            id='font-size-input'
-                            type='number'
-                            value={selectedEl.fontSize ?? 12}
-                            onChange={e =>
-                              updateElement(selectedEl.id, {
-                                fontSize: parseInt(e.target.value),
-                              })
-                            }
-                            className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500'
-                          />
-                        </div>
-                        <div>
-                          <label
-                            htmlFor='color-input'
-                            className='block text-sm font-medium text-gray-700 mb-1'
-                          >
-                            Цвет
-                          </label>
-                          <input
-                            id='color-input'
-                            type='color'
-                            value={selectedEl.color ?? '#000000'}
-                            onChange={e =>
-                              updateElement(selectedEl.id, {
-                                color: e.target.value,
-                              })
-                            }
-                            className='w-full h-10 border border-gray-300 rounded-md'
-                          />
-                        </div>
-                      </>
+                <div className='p-4'>
+                  <div className='flex items-start justify-between mb-2'>
+                    <h3 className='text-lg font-semibold text-gray-900 dark:text-gray-100'>
+                      {template.name}
+                    </h3>
+                    {template.version && (
+                      <span className='text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-2 py-1 rounded'>
+                        v{template.version}
+                      </span>
                     )}
-
-                    <div className='grid grid-cols-2 gap-2'>
-                      <div>
-                        <label
-                          htmlFor='x-input'
-                          className='block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1'
-                        >
-                          X
-                        </label>
-                        <input
-                          id='x-input'
-                          type='number'
-                          value={selectedEl.x}
-                          onChange={e =>
-                            updateElement(selectedEl.id, {
-                              x: parseInt(e.target.value),
-                            })
-                          }
-                          className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-md text-sm'
-                        />
-                      </div>
-                      <div>
-                        <label
-                          htmlFor='y-input'
-                          className='block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1'
-                        >
-                          Y
-                        </label>
-                        <input
-                          id='y-input'
-                          type='number'
-                          value={selectedEl.y}
-                          onChange={e =>
-                            updateElement(selectedEl.id, {
-                              y: parseInt(e.target.value),
-                            })
-                          }
-                          className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-md text-sm'
-                        />
-                      </div>
-                    </div>
-
-                    <div className='grid grid-cols-2 gap-2 mt-4'>
-                      <div>
-                        <label
-                          htmlFor='width-input'
-                          className='block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1'
-                        >
-                          Ширина
-                        </label>
-                        <input
-                          id='width-input'
-                          type='number'
-                          value={selectedEl.width}
-                          onChange={e =>
-                            updateElement(selectedEl.id, {
-                              width: parseInt(e.target.value),
-                            })
-                          }
-                          className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-md text-sm'
-                          min='10'
-                          max='300'
-                        />
-                      </div>
-                      <div>
-                        <label
-                          htmlFor='height-input'
-                          className='block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1'
-                        >
-                          Высота
-                        </label>
-                        <input
-                          id='height-input'
-                          type='number'
-                          value={selectedEl.height}
-                          onChange={e =>
-                            updateElement(selectedEl.id, {
-                              height: parseInt(e.target.value),
-                            })
-                          }
-                          className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-md text-sm'
-                          min='10'
-                          max='200'
-                        />
-                      </div>
-                    </div>
-
+                  </div>
+                  <p className='text-sm text-gray-600 dark:text-gray-400 mb-3'>
+                    {template.description}
+                  </p>
+                  <div className='flex items-center gap-2 text-xs text-gray-500 mb-3'>
+                    <span className='bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded'>
+                      {template.category}
+                    </span>
+                    <span>•</span>
+                    <span>{template.elements.length} элементов</span>
+                  </div>
+                  <div className='flex gap-2'>
                     <button
-                      onClick={() => deleteElement(selectedEl.id)}
-                      className='w-full px-3 py-2 bg-red-600 text-white text-sm rounded-md hover:bg-red-500'
+                      onClick={() => handleUseTemplate(template)}
+                      className='flex-1 bg-indigo-600 text-white px-3 py-2 rounded-md hover:bg-indigo-700 text-sm'
                     >
-                      Удалить элемент
+                      Использовать
+                    </button>
+                    <button
+                      onClick={() => handleEditTemplate(template)}
+                      className='bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-3 py-2 rounded-md hover:bg-blue-200 dark:hover:bg-blue-900/50 text-sm'
+                      title='Редактировать'
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      onClick={() => handleDuplicateTemplate(template)}
+                      className='bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-2 rounded-md hover:bg-gray-300 text-sm'
+                      title='Дублировать'
+                    >
+                      📋
+                    </button>
+                    <button
+                      onClick={() => setShowDeleteConfirm(template.id)}
+                      className='bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-3 py-2 rounded-md hover:bg-red-200 text-sm'
+                      title='Удалить'
+                    >
+                      🗑️
                     </button>
                   </div>
                 </div>
-              )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {showDeleteConfirm && (
+          <div className='fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'>
+            <div className='bg-white dark:bg-gray-800 rounded-lg max-w-md w-full p-6'>
+              <h3 className='text-xl font-bold text-gray-900 dark:text-gray-100 mb-4'>
+                Удалить шаблон?
+              </h3>
+              <p className='text-gray-600 dark:text-gray-400 mb-6'>
+                Вы уверены, что хотите удалить этот шаблон?
+              </p>
+              <div className='flex gap-3'>
+                <button
+                  onClick={() => handleDeleteTemplate(showDeleteConfirm)}
+                  className='flex-1 bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700'
+                >
+                  Удалить
+                </button>
+                <button
+                  onClick={() => setShowDeleteConfirm(null)}
+                  className='flex-1 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 px-4 py-2 rounded-md hover:bg-gray-50'
+                >
+                  Отмена
+                </button>
+              </div>
             </div>
+          </div>
+        )}
 
-            {/* Canvas */}
-            <div className='lg:col-span-2'>
-              <div className='bg-white dark:bg-gray-800 rounded-lg shadow p-6'>
-                <div className='flex justify-between items-center mb-4'>
-                  <h3 className='font-medium text-gray-900 dark:text-gray-100'>
-                    Холст (80×50mm) - {selectedTemplate.name}
-                  </h3>
-                  <div className='text-sm text-gray-500'>Масштаб: 1:1</div>
-                </div>
-
-                <div className='border-2 border-dashed border-gray-300 p-4 bg-gray-50'>
-                  <div
-                    className='relative bg-white border shadow-sm mx-auto'
-                    style={{
-                      width: `${canvasSize.width}px`,
-                      height: `${canvasSize.height}px`,
-                    }}
-                    role='button'
-                    tabIndex={0}
-                    onClick={() => setSelectedElement(null)}
-                    onKeyDown={e =>
-                      e.key === 'Escape' && setSelectedElement(null)
+        {showCreateModal && (
+          <div className='fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'>
+            <div className='bg-white dark:bg-gray-800 rounded-lg max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto'>
+              <h3 className='text-xl font-bold text-gray-900 dark:text-gray-100 mb-4'>
+                Создать новый шаблон
+              </h3>
+              <div className='space-y-4'>
+                <div>
+                  <label
+                    htmlFor='new-template-name'
+                    className='block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1'
+                  >
+                    Название *
+                  </label>
+                  <input
+                    id='new-template-name'
+                    type='text'
+                    value={newTemplate.name}
+                    onChange={e =>
+                      setNewTemplate({ ...newTemplate, name: e.target.value })
                     }
-                  >
-                    {elements.map(element => (
-                      <div
-                        key={element.id}
-                        className={`absolute border cursor-pointer transition ${
-                          selectedElement === element.id
-                            ? 'border-indigo-500 bg-indigo-50'
-                            : 'border-transparent hover:border-gray-400'
-                        }`}
-                        style={{
-                          left: element.x,
-                          top: element.y,
-                          width: element.width,
-                          height: element.height,
-                          fontSize: element.fontSize,
-                          color: element.color,
-                        }}
-                        role='button'
-                        tabIndex={0}
-                        onClick={e => {
-                          e.stopPropagation();
-                          setSelectedElement(element.id);
-                        }}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setSelectedElement(element.id);
-                          }
-                        }}
-                      >
-                        {element.type === 'text' && (
-                          <div className='w-full h-full flex items-center'>
-                            <span
-                              className={`block truncate ${element.dataBinding ? 'text-blue-600' : ''}`}
-                            >
-                              {getElementContent(element)}
-                            </span>
-                            {element.dataBinding && (
-                              <span className='ml-1 text-xs text-blue-500'>
-                                🔗
-                              </span>
-                            )}
-                          </div>
-                        )}
-                        {element.type === 'qr' && (
-                          <div className='w-full h-full bg-gray-200 border-2 border-dashed border-gray-400 flex items-center justify-center text-xs relative'>
-                            QR
-                            {element.dataBinding && (
-                              <span className='absolute top-0 right-0 text-blue-500'>
-                                🔗
-                              </span>
-                            )}
-                          </div>
-                        )}
-                        {element.type === 'barcode' && (
-                          <div className='w-full h-full bg-gray-200 border-2 border-dashed border-gray-400 flex items-center justify-center text-xs relative'>
-                            |||||||
-                            {element.dataBinding && (
-                              <span className='absolute top-0 right-0 text-blue-500'>
-                                🔗
-                              </span>
-                            )}
-                          </div>
-                        )}
-                        {element.type === 'image' && (
-                          <div className='w-full h-full bg-gray-200 border-2 border-dashed border-gray-400 flex items-center justify-center text-xs relative'>
-                            🖼️
-                            {element.dataBinding && (
-                              <span className='absolute top-0 right-0 text-blue-500'>
-                                🔗
-                              </span>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Resize handles for selected element */}
-                        {selectedElement === element.id && (
-                          <>
-                            {/* Bottom-right corner handle */}
-                            <div
-                              className='absolute w-3 h-3 bg-indigo-500 border border-white cursor-se-resize'
-                              style={{ bottom: -1, right: -1 }}
-                              role='button'
-                              tabIndex={0}
-                              aria-label='Изменить размер элемента'
-                              onMouseDown={e => {
-                                e.preventDefault();
-                                e.stopPropagation();
-
-                                const startX = e.clientX;
-                                const startY = e.clientY;
-                                const startWidth = element.width;
-                                const startHeight = element.height;
-
-                                const handleMouseMove = (e: MouseEvent) => {
-                                  const deltaX = e.clientX - startX;
-                                  const deltaY = e.clientY - startY;
-                                  const newWidth = Math.max(
-                                    10,
-                                    startWidth + deltaX
-                                  );
-                                  const newHeight = Math.max(
-                                    10,
-                                    startHeight + deltaY
-                                  );
-
-                                  updateElement(element.id, {
-                                    width: newWidth,
-                                    height: newHeight,
-                                  });
-                                };
-
-                                const handleMouseUp = () => {
-                                  document.removeEventListener(
-                                    'mousemove',
-                                    handleMouseMove
-                                  );
-                                  document.removeEventListener(
-                                    'mouseup',
-                                    handleMouseUp
-                                  );
-                                };
-
-                                document.addEventListener(
-                                  'mousemove',
-                                  handleMouseMove
-                                );
-                                document.addEventListener(
-                                  'mouseup',
-                                  handleMouseUp
-                                );
-                              }}
-                            />
-
-                            {/* Right edge handle */}
-                            <div
-                              className='absolute w-2 h-full bg-indigo-400 opacity-50 cursor-e-resize'
-                              style={{ right: -1, top: 0 }}
-                              role='button'
-                              tabIndex={0}
-                              aria-label='Изменить ширину элемента'
-                              onMouseDown={e => {
-                                e.preventDefault();
-                                e.stopPropagation();
-
-                                const startX = e.clientX;
-                                const startWidth = element.width;
-
-                                const handleMouseMove = (e: MouseEvent) => {
-                                  const deltaX = e.clientX - startX;
-                                  const newWidth = Math.max(
-                                    10,
-                                    startWidth + deltaX
-                                  );
-
-                                  updateElement(element.id, {
-                                    width: newWidth,
-                                  });
-                                };
-
-                                const handleMouseUp = () => {
-                                  document.removeEventListener(
-                                    'mousemove',
-                                    handleMouseMove
-                                  );
-                                  document.removeEventListener(
-                                    'mouseup',
-                                    handleMouseUp
-                                  );
-                                };
-
-                                document.addEventListener(
-                                  'mousemove',
-                                  handleMouseMove
-                                );
-                                document.addEventListener(
-                                  'mouseup',
-                                  handleMouseUp
-                                );
-                              }}
-                            />
-
-                            {/* Bottom edge handle */}
-                            <div
-                              className='absolute w-full h-2 bg-indigo-400 opacity-50 cursor-s-resize'
-                              style={{ bottom: -1, left: 0 }}
-                              role='button'
-                              tabIndex={0}
-                              aria-label='Изменить высоту элемента'
-                              onMouseDown={e => {
-                                e.preventDefault();
-                                e.stopPropagation();
-
-                                const startY = e.clientY;
-                                const startHeight = element.height;
-
-                                const handleMouseMove = (e: MouseEvent) => {
-                                  const deltaY = e.clientY - startY;
-                                  const newHeight = Math.max(
-                                    10,
-                                    startHeight + deltaY
-                                  );
-
-                                  updateElement(element.id, {
-                                    height: newHeight,
-                                  });
-                                };
-
-                                const handleMouseUp = () => {
-                                  document.removeEventListener(
-                                    'mousemove',
-                                    handleMouseMove
-                                  );
-                                  document.removeEventListener(
-                                    'mouseup',
-                                    handleMouseUp
-                                  );
-                                };
-
-                                document.addEventListener(
-                                  'mousemove',
-                                  handleMouseMove
-                                );
-                                document.addEventListener(
-                                  'mouseup',
-                                  handleMouseUp
-                                );
-                              }}
-                            />
-                          </>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                    className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500'
+                  />
                 </div>
+                <div>
+                  <label
+                    htmlFor='new-template-category'
+                    className='block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1'
+                  >
+                    Категория
+                  </label>
+                  <select
+                    id='new-template-category'
+                    value={newTemplate.category}
+                    onChange={e =>
+                      setNewTemplate({
+                        ...newTemplate,
+                        category: e.target.value,
+                      })
+                    }
+                    className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500'
+                  >
+                    {categories.map(cat => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label
+                    htmlFor='new-template-description'
+                    className='block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1'
+                  >
+                    Описание
+                  </label>
+                  <textarea
+                    id='new-template-description'
+                    value={newTemplate.description}
+                    onChange={e =>
+                      setNewTemplate({
+                        ...newTemplate,
+                        description: e.target.value,
+                      })
+                    }
+                    rows={3}
+                    className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500'
+                  />
+                </div>
+                <div className='bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4'>
+                  <p className='text-sm text-blue-800 dark:text-blue-300'>
+                    <span className='font-semibold'>ℹ️ Базовая структура:</span>
+                  </p>
+                  <ul className='text-sm text-blue-700 dark:text-blue-400 mt-2 ml-4 list-disc'>
+                    <li>Текстовое поле для названия продукта</li>
+                    <li>QR-код для маркировки</li>
+                  </ul>
+                  <p className='text-xs text-blue-600 dark:text-blue-400 mt-2'>
+                    После создания используйте кнопку &quot;Использовать&quot;
+                    для добавления дополнительных элементов
+                  </p>
+                </div>
+              </div>
+              <div className='flex gap-3 mt-6'>
+                <button
+                  onClick={handleSaveNewTemplate}
+                  disabled={loading}
+                  className='flex-1 bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed'
+                >
+                  {loading ? 'Создание...' : 'Создать'}
+                </button>
+                <button
+                  onClick={() => setShowCreateModal(false)}
+                  disabled={loading}
+                  className='flex-1 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 px-4 py-2 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 disabled:cursor-not-allowed'
+                >
+                  Отмена
+                </button>
               </div>
             </div>
+          </div>
+        )}
 
-            {/* Product Data & Export */}
-            <div className='lg:col-span-1'>
-              <div className='bg-white dark:bg-gray-800 rounded-lg shadow p-4 mb-4'>
-                <h3 className='font-medium mb-3 text-gray-900 dark:text-gray-100'>
-                  Данные продукта
-                </h3>
-                <div className='space-y-2 text-xs'>
-                  <div>
-                    <strong>Название:</strong> {selectedProduct.name}
-                  </div>
-                  <div>
-                    <strong>SKU:</strong> {selectedProduct.sku}
-                  </div>
-                  <div>
-                    <strong>Цена:</strong> {selectedProduct.price} ₽
-                  </div>
-                  <div>
-                    <strong>Производитель:</strong>{' '}
-                    {selectedProduct.manufacturer}
-                  </div>
-                  <div>
-                    <strong>Вес:</strong> {selectedProduct.weight}
-                  </div>
-                  <div>
-                    <strong>Срок годности:</strong> {selectedProduct.expiryDate}
-                  </div>
-                  <div>
-                    <strong>Партия:</strong> {selectedProduct.batchNumber}
-                  </div>
+        {editingTemplate && (
+          <div className='fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'>
+            <div className='bg-white dark:bg-gray-800 rounded-lg max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto'>
+              <h3 className='text-xl font-bold text-gray-900 dark:text-gray-100 mb-4'>
+                Редактировать шаблон
+              </h3>
+              <div className='space-y-4'>
+                <div>
+                  <label
+                    htmlFor='template-name'
+                    className='block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1'
+                  >
+                    Название
+                  </label>
+                  <input
+                    id='template-name'
+                    type='text'
+                    value={editingTemplate.name}
+                    onChange={e =>
+                      setEditingTemplate({
+                        ...editingTemplate,
+                        name: e.target.value,
+                      })
+                    }
+                    className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500'
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor='template-category'
+                    className='block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1'
+                  >
+                    Категория
+                  </label>
+                  <select
+                    id='template-category'
+                    value={editingTemplate.category}
+                    onChange={e =>
+                      setEditingTemplate({
+                        ...editingTemplate,
+                        category: e.target.value,
+                      })
+                    }
+                    className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500'
+                  >
+                    {categories.map(cat => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label
+                    htmlFor='template-description'
+                    className='block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1'
+                  >
+                    Описание
+                  </label>
+                  <textarea
+                    id='template-description'
+                    value={editingTemplate.description || ''}
+                    onChange={e =>
+                      setEditingTemplate({
+                        ...editingTemplate,
+                        description: e.target.value,
+                      })
+                    }
+                    rows={3}
+                    className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500'
+                  />
+                </div>
+                <div>
+                  <p className='text-sm text-gray-600 dark:text-gray-400'>
+                    Элементов: {editingTemplate.elements.length}
+                  </p>
+                  <p className='text-xs text-gray-500 dark:text-gray-500 mt-1'>
+                    Для редактирования элементов используйте
+                    &quot;Использовать&quot; → редактор этикеток
+                  </p>
                 </div>
               </div>
-
-              <div className='bg-white dark:bg-gray-800 rounded-lg shadow p-4'>
-                <h3 className='font-medium mb-3 text-gray-900 dark:text-gray-100'>
-                  Экспорт
-                </h3>
-                <div className='space-y-2'>
-                  <button
-                    onClick={handleExportPDF}
-                    className='w-full px-3 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-500'
-                  >
-                    📄 Скачать PDF
-                  </button>
-                  <button
-                    onClick={handleExportHighQualityPDF}
-                    className='w-full px-3 py-2 bg-blue-700 text-white text-sm rounded-md hover:bg-blue-600'
-                  >
-                    📄 HD PDF (печать)
-                  </button>
-                  <button
-                    onClick={handleCreatePreview}
-                    className='w-full px-3 py-2 bg-green-600 text-white text-sm rounded-md hover:bg-green-500'
-                  >
-                    👁️ Превью этикетки
-                  </button>
-                  <button className='w-full px-3 py-2 bg-purple-600 text-white text-sm rounded-md hover:bg-purple-500'>
-                    🖨️ ZPL для принтера
-                  </button>
-                  <button className='w-full px-3 py-2 border border-gray-300 text-gray-700 text-sm rounded-md hover:bg-gray-50'>
-                    💾 Сохранить как PNG
-                  </button>
-                </div>
+              <div className='flex gap-3 mt-6'>
+                <button
+                  onClick={() => handleSaveEdit(editingTemplate)}
+                  className='flex-1 bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700'
+                >
+                  Сохранить
+                </button>
+                <button
+                  onClick={() => setEditingTemplate(null)}
+                  className='flex-1 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 px-4 py-2 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700'
+                >
+                  Отмена
+                </button>
               </div>
             </div>
           </div>
@@ -1414,4 +886,4 @@ const DesignerInteractive: React.FC = () => {
   );
 };
 
-export default DesignerInteractive;
+export default Designer;

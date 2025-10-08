@@ -1,32 +1,66 @@
 import * as React from 'react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
-interface ProductionStat {
-  date: string;
-  produced: number;
-  rejected: number;
-  efficiency: number;
+import { dataService } from '../services/dataService';
+
+interface ProductionStats {
+  totalJobs: number;
+  completedJobs: number;
+  failedJobs: number;
+  pendingJobs: number;
+  totalQuantity: number;
+  directPrints: number;
+  pdfExports: number;
 }
-
-const mockStats: ProductionStat[] = [
-  { date: '2025-09-28', produced: 1200, rejected: 15, efficiency: 98.8 },
-  { date: '2025-09-29', produced: 1350, rejected: 8, efficiency: 99.4 },
-  { date: '2025-09-30', produced: 980, rejected: 22, efficiency: 97.8 },
-  { date: '2025-10-01', produced: 1450, rejected: 12, efficiency: 99.2 },
-  { date: '2025-10-02', produced: 1320, rejected: 18, efficiency: 98.6 },
-];
 
 const ReportsInteractive: React.FC = () => {
   const [dateRange, setDateRange] = useState('7d');
   const [reportType, setReportType] = useState('production');
+  const [stats, setStats] = useState<ProductionStats | null>(null);
+  const [_statsLoading, setStatsLoading] = useState(true);
+  const [_statsError, setStatsError] = useState<string | null>(null);
 
-  const totalProduced = mockStats.reduce((sum, stat) => sum + stat.produced, 0);
-  const totalRejected = mockStats.reduce((sum, stat) => sum + stat.rejected, 0);
-  const avgEfficiency =
-    mockStats.reduce((sum, stat) => sum + stat.efficiency, 0) /
-    mockStats.length;
+  useEffect(() => {
+    let isMounted = true;
 
-  const maxProduced = Math.max(...mockStats.map(s => s.produced));
+    const loadStats = async () => {
+      try {
+        setStatsLoading(true);
+        setStatsError(null);
+
+        const now = new Date();
+        const daysMap = { '7d': 7, '30d': 30, '90d': 90 };
+        const days = daysMap[dateRange as keyof typeof daysMap] ?? 7;
+        const dateFrom = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
+          .toISOString()
+          .split('T')[0];
+
+        const data = await dataService.getProductionStats(dateFrom);
+        if (!isMounted) return;
+
+        setStats(data);
+      } catch (err) {
+        if (!isMounted) return;
+        setStatsError(
+          err instanceof Error ? err.message : 'Ошибка загрузки статистики'
+        );
+      } finally {
+        if (isMounted) setStatsLoading(false);
+      }
+    };
+
+    loadStats();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [dateRange]);
+
+  const totalProduced = stats?.totalQuantity ?? 0;
+  const totalRejected = stats?.failedJobs ?? 0;
+  const avgEfficiency = stats
+    ? ((stats.completedJobs / (stats.totalJobs || 1)) * 100).toFixed(1)
+    : '0';
 
   return (
     <div className='w-full min-h-screen bg-gray-50 dark:bg-gray-900 p-6'>
@@ -71,9 +105,9 @@ const ReportsInteractive: React.FC = () => {
             </div>
             <div className='ml-4'>
               <div className='text-2xl font-bold text-red-600'>
-                {totalRejected}
+                {totalRejected.toLocaleString()}
               </div>
-              <div className='text-sm text-gray-600'>Отклонено</div>
+              <div className='text-sm text-gray-600'>Неудачных заданий</div>
             </div>
           </div>
         </div>
@@ -85,9 +119,11 @@ const ReportsInteractive: React.FC = () => {
             </div>
             <div className='ml-4'>
               <div className='text-2xl font-bold text-green-600'>
-                {avgEfficiency.toFixed(1)}%
+                {avgEfficiency}%
               </div>
-              <div className='text-sm text-gray-600'>Средняя эффективность</div>
+              <div className='text-sm text-gray-600'>
+                Коэффициент успешности
+              </div>
             </div>
           </div>
         </div>
@@ -99,9 +135,9 @@ const ReportsInteractive: React.FC = () => {
             </div>
             <div className='ml-4'>
               <div className='text-2xl font-bold text-purple-600'>
-                {mockStats.length}
+                {stats?.totalJobs ?? 0}
               </div>
-              <div className='text-sm text-gray-600'>Активных партий</div>
+              <div className='text-sm text-gray-600'>Всего заданий</div>
             </div>
           </div>
         </div>
@@ -138,67 +174,12 @@ const ReportsInteractive: React.FC = () => {
             </div>
           </div>
           <div className='p-6'>
-            {reportType === 'production' ? (
-              <div className='space-y-4'>
-                {mockStats.map(stat => (
-                  <div key={stat.date} className='flex items-center gap-4'>
-                    <div className='w-20 text-sm text-gray-600'>
-                      {new Date(stat.date).toLocaleDateString('ru-RU', {
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                    </div>
-                    <div className='flex-1'>
-                      <div className='flex justify-between items-center mb-1'>
-                        <span className='text-sm font-medium'>
-                          {stat.produced} шт.
-                        </span>
-                        <span className='text-xs text-gray-500'>
-                          {stat.efficiency}%
-                        </span>
-                      </div>
-                      <div className='w-full bg-gray-200 rounded-full h-3'>
-                        <div
-                          className='bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all'
-                          style={{
-                            width: `${(stat.produced / maxProduced) * 100}%`,
-                          }}
-                        ></div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className='space-y-4'>
-                {mockStats.map(stat => (
-                  <div key={stat.date} className='flex items-center gap-4'>
-                    <div className='w-20 text-sm text-gray-600'>
-                      {new Date(stat.date).toLocaleDateString('ru-RU', {
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                    </div>
-                    <div className='flex-1'>
-                      <div className='flex justify-between items-center mb-1'>
-                        <span className='text-sm'>
-                          Отклонено: {stat.rejected}
-                        </span>
-                        <span className='text-sm font-medium text-green-600'>
-                          {stat.efficiency}%
-                        </span>
-                      </div>
-                      <div className='w-full bg-gray-200 rounded-full h-3'>
-                        <div
-                          className='bg-gradient-to-r from-green-500 to-green-600 h-3 rounded-full'
-                          style={{ width: `${stat.efficiency}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <div className='py-12 text-center text-gray-500'>
+              Детализированная статистика по дням будет доступна в следующей
+              версии.
+              <br />
+              Используйте верхние панели для просмотра общей статистики.
+            </div>
           </div>
         </div>
 

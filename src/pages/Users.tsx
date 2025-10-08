@@ -1,5 +1,10 @@
 import * as React from 'react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+
+import {
+  getSupabaseService,
+  type DatabaseUser,
+} from '../services/supabaseService';
 
 interface User {
   id: string;
@@ -13,19 +18,6 @@ interface User {
   department: string;
   permissions: string[];
   avatar?: string;
-}
-
-interface AuditLog {
-  id: string;
-  userId: string;
-  userName: string;
-  action: string;
-  target?: string;
-  timestamp: string;
-  ipAddress: string;
-  userAgent: string;
-  success: boolean;
-  details?: string;
 }
 
 interface Role {
@@ -78,143 +70,61 @@ const roles: Role[] = [
   },
 ];
 
-const mockUsers: User[] = [
-  {
-    id: '1',
-    email: 'admin@markirovka.ru',
-    firstName: 'Александр',
-    lastName: 'Петров',
-    role: 'admin',
-    status: 'active',
-    lastLogin: '2025-10-04T15:30:00',
-    createdAt: '2025-01-15T10:00:00',
-    department: 'IT',
-    permissions: roles.find(r => r.name === 'admin')?.permissions ?? [],
-    avatar: '👨‍💼',
-  },
-  {
-    id: '2',
-    email: 'manager@markirovka.ru',
-    firstName: 'Мария',
-    lastName: 'Сидорова',
-    role: 'manager',
-    status: 'active',
-    lastLogin: '2025-10-04T14:45:00',
-    createdAt: '2025-02-20T09:30:00',
-    department: 'Производство',
-    permissions: roles.find(r => r.name === 'manager')?.permissions ?? [],
-    avatar: '👩‍💼',
-  },
-  {
-    id: '3',
-    email: 'worker1@markirovka.ru',
-    firstName: 'Иван',
-    lastName: 'Козлов',
-    role: 'worker',
-    status: 'active',
-    lastLogin: '2025-10-04T13:20:00',
-    createdAt: '2025-03-10T11:15:00',
-    department: 'Склад А',
-    permissions: roles.find(r => r.name === 'worker')?.permissions ?? [],
-    avatar: '👨‍🔧',
-  },
-  {
-    id: '4',
-    email: 'worker2@markirovka.ru',
-    firstName: 'Елена',
-    lastName: 'Васильева',
-    role: 'worker',
-    status: 'blocked',
-    lastLogin: '2025-10-02T16:10:00',
-    createdAt: '2025-04-05T08:45:00',
-    department: 'Упаковка',
-    permissions: roles.find(r => r.name === 'worker')?.permissions ?? [],
-    avatar: '👩‍🔧',
-  },
-  {
-    id: '5',
-    email: 'newuser@markirovka.ru',
-    firstName: 'Дмитрий',
-    lastName: 'Новиков',
-    role: 'worker',
-    status: 'pending',
-    createdAt: '2025-10-04T12:00:00',
-    department: 'Склад Б',
-    permissions: roles.find(r => r.name === 'worker')?.permissions ?? [],
-    avatar: '👨',
-  },
-];
-
-const mockAuditLogs: AuditLog[] = [
-  {
-    id: '1',
-    userId: '1',
-    userName: 'Александр Петров',
-    action: 'Создание пользователя',
-    target: 'Дмитрий Новиков',
-    timestamp: '2025-10-04T12:00:00',
-    ipAddress: '192.168.1.100',
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-    success: true,
-    details: 'Создан новый пользователь с ролью worker',
-  },
-  {
-    id: '2',
-    userId: '1',
-    userName: 'Александр Петров',
-    action: 'Блокировка пользователя',
-    target: 'Елена Васильева',
-    timestamp: '2025-10-04T11:30:00',
-    ipAddress: '192.168.1.100',
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-    success: true,
-    details: 'Заблокирован за нарушение регламента',
-  },
-  {
-    id: '3',
-    userId: '2',
-    userName: 'Мария Сидорова',
-    action: 'Изменение роли',
-    target: 'Иван Козлов',
-    timestamp: '2025-10-04T10:15:00',
-    ipAddress: '192.168.1.105',
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-    success: true,
-    details: 'Роль изменена с worker на manager',
-  },
-  {
-    id: '4',
-    userId: '3',
-    userName: 'Иван Козлов',
-    action: 'Попытка доступа к системным настройкам',
-    timestamp: '2025-10-04T09:45:00',
-    ipAddress: '192.168.1.110',
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-    success: false,
-    details: 'Отказано в доступе - недостаточно прав',
-  },
-  {
-    id: '5',
-    userId: '2',
-    userName: 'Мария Сидорова',
-    action: 'Восстановление пользователя',
-    target: 'Елена Васильева',
-    timestamp: '2025-10-03T16:20:00',
-    ipAddress: '192.168.1.105',
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-    success: true,
-    details: 'Пользователь восстановлен после проверки',
-  },
-];
-
 const Users: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'users' | 'roles' | 'audit'>(
     'users'
   );
-  const [users, setUsers] = useState<User[]>(mockUsers);
+  const [users, setUsers] = useState<User[]>([]);
+  const [_usersLoading, setUsersLoading] = useState(true);
+  const [_usersError, setUsersError] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [_showNewUser, setShowNewUser] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadUsers = async () => {
+      try {
+        setUsersLoading(true);
+        setUsersError(null);
+        const supabase = getSupabaseService();
+        const dbUsers = await supabase.getUsers();
+        if (!isMounted) return;
+
+        const mapped: User[] = dbUsers.map((u: DatabaseUser) => {
+          const user: User = {
+            id: u.id,
+            email: u.email,
+            firstName: u.first_name ?? 'Имя',
+            lastName: u.last_name ?? 'Фамилия',
+            role: (u.role as User['role']) ?? 'worker',
+            status: (u.status as User['status']) ?? 'active',
+            createdAt: u.created_at,
+            department: u.department ?? 'Не указан',
+            permissions: [],
+          };
+          if (u.last_login) user.lastLogin = u.last_login;
+          return user;
+        });
+
+        setUsers(mapped);
+      } catch (err) {
+        if (!isMounted) return;
+        setUsersError(
+          err instanceof Error ? err.message : 'Ошибка загрузки пользователей'
+        );
+      } finally {
+        if (isMounted) setUsersLoading(false);
+      }
+    };
+
+    loadUsers();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
   const [roleFilter, setRoleFilter] = useState<
     'all' | 'admin' | 'manager' | 'worker'
   >('all');
@@ -338,7 +248,7 @@ const Users: React.FC = () => {
                 <input
                   id='user-search'
                   type='text'
-                  placeholder='Имя, email, отдел...'
+                  placeholder='Поиск пользователей...'
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
                   className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500'
@@ -586,46 +496,16 @@ const Users: React.FC = () => {
                     </th>
                   </tr>
                 </thead>
-                <tbody className='bg-white divide-y divide-gray-200'>
-                  {mockAuditLogs.map(log => (
-                    <tr key={log.id} className='hover:bg-gray-50'>
-                      <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-900'>
-                        {new Date(log.timestamp).toLocaleString()}
-                      </td>
-                      <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-900'>
-                        {log.userName}
-                      </td>
-                      <td className='px-6 py-4 whitespace-nowrap'>
-                        <div className='text-sm text-gray-900'>
-                          {log.action}
-                        </div>
-                        {log.target && (
-                          <div className='text-sm text-gray-500'>
-                            Цель: {log.target}
-                          </div>
-                        )}
-                        {log.details && (
-                          <div className='text-xs text-gray-400 mt-1'>
-                            {log.details}
-                          </div>
-                        )}
-                      </td>
-                      <td className='px-6 py-4 whitespace-nowrap'>
-                        <span
-                          className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                            log.success
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}
-                        >
-                          {log.success ? 'Успешно' : 'Ошибка'}
-                        </span>
-                      </td>
-                      <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono'>
-                        {log.ipAddress}
-                      </td>
-                    </tr>
-                  ))}
+                <tbody className='divide-y divide-gray-200'>
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className='px-6 py-12 text-center text-gray-500'
+                    >
+                      Аудит действий пользователей будет доступен в следующей
+                      версии.
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>

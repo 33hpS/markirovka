@@ -16,35 +16,8 @@ interface Batch {
   createdAt: string;
 }
 
-const mockBatches: Batch[] = [
-  {
-    id: 'B001',
-    name: 'Партия молока 001',
-    product: 'Молоко 3.2%',
-    quantity: 1000,
-    produced: 1000,
-    status: 'completed',
-    createdAt: '2025-10-01',
-  },
-  {
-    id: 'B002',
-    name: 'Партия хлеба 045',
-    product: 'Хлеб белый',
-    quantity: 500,
-    produced: 320,
-    status: 'production',
-    createdAt: '2025-10-02',
-  },
-  {
-    id: 'B003',
-    name: 'Партия сыра 012',
-    product: 'Сыр твёрдый',
-    quantity: 200,
-    produced: 200,
-    status: 'quality-check',
-    createdAt: '2025-10-02',
-  },
-];
+// Демо данные удалены - данные будут загружаться из API
+const mockBatches: Batch[] = [];
 
 const statusLabels = {
   planning: 'Планирование',

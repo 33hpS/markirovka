@@ -1,5 +1,10 @@
 import * as React from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+
+import * as api from '../services/apiService';
+import type { Printer as ApiPrinter } from '../services/apiService';
+import { dataService } from '../services/dataService';
+import type { PrintJob as BackendPrintJob } from '../types/entities';
 
 interface PrintJob {
   id: string;
@@ -35,139 +40,204 @@ interface PrinterProfile {
   maintenanceDate?: string;
 }
 
-const mockPrintJobs: PrintJob[] = [
-  {
-    id: '1',
-    name: 'Этикетки молочной продукции',
-    template: 'Стандартная этикетка',
-    quantity: 500,
-    printer: 'Zebra-ZT420-01',
-    status: 'printing',
-    priority: 'high',
-    createdAt: '2025-10-04T10:30:00',
-    startedAt: '2025-10-04T10:35:00',
-    progress: 65,
-    user: 'И. Петров',
-    estimatedTime: '5 мин',
-  },
-  {
-    id: '2',
-    name: 'QR коды для экспорта',
-    template: 'Экспортная этикетка',
-    quantity: 200,
-    printer: 'Brother-QL820-02',
-    status: 'pending',
-    priority: 'normal',
-    createdAt: '2025-10-04T11:15:00',
-    progress: 0,
-    user: 'А. Сидорова',
-    estimatedTime: '3 мин',
-  },
-  {
-    id: '3',
-    name: 'Премиум упаковка',
-    template: 'Премиум этикетка',
-    quantity: 50,
-    printer: 'HP-LaserJet-03',
-    status: 'completed',
-    priority: 'normal',
-    createdAt: '2025-10-04T09:45:00',
-    startedAt: '2025-10-04T09:50:00',
-    completedAt: '2025-10-04T10:05:00',
-    progress: 100,
-    user: 'М. Козлов',
-  },
-  {
-    id: '4',
-    name: 'Срочная партия хлебобулочных',
-    template: 'Минимальная этикетка',
-    quantity: 1000,
-    printer: 'Zebra-ZT420-01',
-    status: 'failed',
-    priority: 'urgent',
-    createdAt: '2025-10-04T08:20:00',
-    startedAt: '2025-10-04T08:25:00',
-    progress: 25,
-    errorMessage: 'Замятие бумаги. Требуется обслуживание.',
-    user: 'Е. Васильев',
-  },
-];
+const printerTypeMap: Record<string, PrinterProfile['type']> = {
+  ZPL: 'ZPL',
+  PDF: 'PDF',
+  EPL: 'EPL',
+  DIRECT: 'Direct',
+};
 
-const mockPrinters: PrinterProfile[] = [
-  {
-    id: 'zebra-01',
-    name: 'Zebra-ZT420-01',
-    type: 'ZPL',
-    status: 'busy',
-    location: 'Склад А, участок 1',
-    ipAddress: '192.168.1.101',
-    model: 'Zebra ZT420',
-    capabilities: ['203 dpi', '300 dpi', 'Термопечать', 'Термотрансфер'],
-    paperSize: '104mm x 74mm',
-    resolution: '203 dpi',
-    lastJobTime: '2025-10-04T10:35:00',
-    totalJobs: 1547,
-    errorCount: 3,
-    maintenanceDate: '2025-09-15',
-  },
-  {
-    id: 'brother-02',
-    name: 'Brother-QL820-02',
-    type: 'PDF',
-    status: 'online',
-    location: 'Упаковочный участок',
-    ipAddress: '192.168.1.102',
-    model: 'Brother QL-820NWB',
-    capabilities: ['300 dpi', 'Цветная печать', 'Wi-Fi'],
-    paperSize: '62mm x 29mm',
-    resolution: '300 dpi',
-    totalJobs: 892,
-    errorCount: 1,
-    maintenanceDate: '2025-09-01',
-  },
-  {
-    id: 'hp-03',
-    name: 'HP-LaserJet-03',
-    type: 'PDF',
-    status: 'online',
-    location: 'Офис, 2 этаж',
-    ipAddress: '192.168.1.103',
-    model: 'HP LaserJet Pro M404n',
-    capabilities: ['1200 dpi', 'Двусторонняя печать', 'A4'],
-    paperSize: 'A4',
-    resolution: '1200 dpi',
-    lastJobTime: '2025-10-04T10:05:00',
-    totalJobs: 2341,
-    errorCount: 0,
-    maintenanceDate: '2025-08-20',
-  },
-  {
-    id: 'zebra-04',
-    name: 'Zebra-GK420d-04',
-    type: 'ZPL',
-    status: 'error',
-    location: 'Склад Б, участок 2',
-    ipAddress: '192.168.1.104',
-    model: 'Zebra GK420d',
-    capabilities: ['203 dpi', 'Термопечать'],
-    paperSize: '58mm x 40mm',
-    resolution: '203 dpi',
-    totalJobs: 745,
-    errorCount: 8,
-    maintenanceDate: '2025-07-10',
-  },
-];
+const mapPrintJob = (job: BackendPrintJob): PrintJob => {
+  const createdAt =
+    typeof job.created_at === 'string'
+      ? job.created_at
+      : new Date(job.created_at).toISOString();
+
+  const startedAt =
+    job.status === 'processing' || job.status === 'completed'
+      ? createdAt
+      : undefined;
+
+  const completedAt = job.completed_at
+    ? typeof job.completed_at === 'string'
+      ? job.completed_at
+      : new Date(job.completed_at).toISOString()
+    : undefined;
+
+  const uiStatus: PrintJob['status'] =
+    job.status === 'processing'
+      ? 'printing'
+      : job.status === 'pending'
+        ? 'pending'
+        : job.status === 'completed'
+          ? 'completed'
+          : 'failed';
+
+  const progress =
+    uiStatus === 'completed'
+      ? 100
+      : uiStatus === 'printing'
+        ? 50
+        : uiStatus === 'failed'
+          ? 25
+          : 0;
+
+  const result: PrintJob = {
+    id: job.id,
+    name: job.productName ?? 'Неизвестный товар',
+    template: job.templateName ?? 'Шаблон не указан',
+    quantity: job.quantity,
+    printer: 'Принтер не указан',
+    status: uiStatus,
+    priority: 'normal',
+    createdAt,
+    progress,
+    user: job.operator,
+  };
+
+  if (startedAt) result.startedAt = startedAt;
+  if (completedAt) result.completedAt = completedAt;
+  if (job.error_message) result.errorMessage = job.error_message;
+
+  return result;
+};
+
+const normalizePrinter = (printer: ApiPrinter): PrinterProfile => {
+  const rawType = (printer.type ?? 'Direct').toString().toUpperCase();
+  const mappedType = printerTypeMap[rawType] ?? 'Direct';
+
+  const validStatuses: PrinterProfile['status'][] = [
+    'online',
+    'offline',
+    'busy',
+    'error',
+    'maintenance',
+  ];
+  const status = validStatuses.includes(
+    printer.status as PrinterProfile['status']
+  )
+    ? (printer.status as PrinterProfile['status'])
+    : 'offline';
+
+  const profile: PrinterProfile = {
+    id: printer.id,
+    name: printer.name ?? 'Неизвестный принтер',
+    type: mappedType,
+    status,
+    location: printer.location ?? '—',
+    ipAddress: printer.ip_address ?? '—',
+    model: printer.model ?? '—',
+    capabilities: Array.isArray(printer.capabilities)
+      ? printer.capabilities.filter(
+          (item): item is string =>
+            typeof item === 'string' && item.trim() !== ''
+        )
+      : [],
+    paperSize: printer.paper_size ?? 'Не указано',
+    resolution: printer.resolution ?? 'Не указано',
+    totalJobs:
+      typeof printer.total_jobs === 'number'
+        ? printer.total_jobs
+        : Number(printer.total_jobs ?? 0) || 0,
+    errorCount:
+      typeof printer.error_count === 'number'
+        ? printer.error_count
+        : Number(printer.error_count ?? 0) || 0,
+  };
+
+  if (printer.last_seen) {
+    profile.lastJobTime = printer.last_seen;
+  }
+
+  if (printer.updated_at) {
+    profile.maintenanceDate = printer.updated_at;
+  }
+
+  return profile;
+};
 
 const Printing: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'queue' | 'printers' | 'monitor'>(
     'queue'
   );
-  const [printJobs, setPrintJobs] = useState<PrintJob[]>(mockPrintJobs);
-  const [_printers] = useState<PrinterProfile[]>(mockPrinters);
+  const [printJobs, setPrintJobs] = useState<PrintJob[]>([]);
+  const [jobsLoading, setJobsLoading] = useState(false);
+  const [jobsError, setJobsError] = useState<string | null>(null);
+  const [printers, setPrinters] = useState<PrinterProfile[]>([]);
+  const [printersLoading, setPrintersLoading] = useState(false);
+  const [printersError, setPrintersError] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<PrintJob | null>(null);
   const [_selectedPrinter, setSelectedPrinter] =
     useState<PrinterProfile | null>(null);
   const [_showNewJob, setShowNewJob] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadPrinters = async () => {
+      setPrintersLoading(true);
+      setPrintersError(null);
+
+      try {
+        const data = await api.fetchPrinters();
+        if (!isMounted) return;
+        const normalized = data.map(normalizePrinter);
+        setPrinters(normalized);
+      } catch (error) {
+        if (!isMounted) return;
+        setPrintersError(
+          error instanceof Error
+            ? error.message
+            : 'Не удалось загрузить список принтеров'
+        );
+        setPrinters([]);
+      } finally {
+        if (isMounted) {
+          setPrintersLoading(false);
+        }
+      }
+    };
+
+    void loadPrinters();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadPrintJobs = async () => {
+      setJobsLoading(true);
+      setJobsError(null);
+
+      try {
+        const jobs = await dataService.getPrintJobs({ limit: 50 });
+        if (!isMounted) return;
+        const mapped = jobs.map(mapPrintJob);
+        setPrintJobs(mapped);
+      } catch (error) {
+        if (!isMounted) return;
+        setJobsError(
+          error instanceof Error
+            ? error.message
+            : 'Не удалось загрузить задания печати'
+        );
+        setPrintJobs([]);
+      } finally {
+        if (isMounted) {
+          setJobsLoading(false);
+        }
+      }
+    };
+
+    void loadPrintJobs();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const getStatusColor = (
     status: PrintJob['status'] | PrinterProfile['status']
@@ -285,7 +355,27 @@ const Printing: React.FC = () => {
             >
               + Добавить задание
             </button>
-          </div>{' '}
+          </div>
+
+          {jobsLoading && (
+            <div className='bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 text-sm text-indigo-600 dark:text-indigo-300'>
+              Загрузка заданий печати...
+            </div>
+          )}
+
+          {jobsError && !jobsLoading && (
+            <div className='bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 border border-red-200 dark:border-red-500 text-sm text-red-700 dark:text-red-300'>
+              {jobsError}
+            </div>
+          )}
+
+          {!jobsLoading && !jobsError && printJobs.length === 0 && (
+            <div className='bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 text-gray-600 dark:text-gray-300'>
+              Задания печати пока отсутствуют. Добавьте новое задание или
+              подождите синхронизации.
+            </div>
+          )}
+
           <div className='bg-white dark:bg-gray-800 rounded-lg shadow-sm overflow-hidden'>
             <div className='overflow-x-auto'>
               <table className='min-w-full divide-y divide-gray-200 dark:divide-gray-700'>
@@ -426,106 +516,125 @@ const Printing: React.FC = () => {
             </button>
           </div>
 
-          <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'>
-            {_printers.map(printer => (
-              <div
-                key={printer.id}
-                className='bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 border border-gray-200 dark:border-gray-700'
-              >
-                <div className='flex items-start justify-between mb-4'>
-                  <div>
-                    <h3 className='text-lg font-semibold text-gray-900 dark:text-gray-100'>
-                      {printer.name}
-                    </h3>
-                    <p className='text-sm text-gray-600 dark:text-gray-300'>
-                      {printer.model}
-                    </p>
-                  </div>
-                  <span
-                    className={`px-2 py-1 rounded text-xs ${getStatusColor(printer.status)}`}
-                  >
-                    {printer.status === 'online' && 'Онлайн'}
-                    {printer.status === 'offline' && 'Офлайн'}
-                    {printer.status === 'busy' && 'Занят'}
-                    {printer.status === 'error' && 'Ошибка'}
-                    {printer.status === 'maintenance' && 'Обслуживание'}
-                  </span>
-                </div>
-
-                <div className='space-y-2 text-sm'>
-                  <div className='flex justify-between'>
-                    <span className='text-gray-500 dark:text-gray-400'>
-                      Тип:
-                    </span>
-                    <span className='font-medium'>{printer.type}</span>
-                  </div>
-                  <div className='flex justify-between'>
-                    <span className='text-gray-500 dark:text-gray-400'>
-                      Местоположение:
-                    </span>
-                    <span className='font-medium text-xs'>
-                      {printer.location}
-                    </span>
-                  </div>
-                  <div className='flex justify-between'>
-                    <span className='text-gray-500 dark:text-gray-400'>
-                      IP:
-                    </span>
-                    <span className='font-medium font-mono text-xs'>
-                      {printer.ipAddress}
-                    </span>
-                  </div>
-                  <div className='flex justify-between'>
-                    <span className='text-gray-500 dark:text-gray-400'>
-                      Разрешение:
-                    </span>
-                    <span className='font-medium'>{printer.resolution}</span>
-                  </div>
-                  <div className='flex justify-between'>
-                    <span className='text-gray-500 dark:text-gray-400'>
-                      Заданий:
-                    </span>
-                    <span className='font-medium'>{printer.totalJobs}</span>
-                  </div>
-                  <div className='flex justify-between'>
-                    <span className='text-gray-500 dark:text-gray-400'>
-                      Ошибок:
-                    </span>
+          {printersLoading ? (
+            <div className='bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 text-gray-600 dark:text-gray-300'>
+              Загрузка списка принтеров...
+            </div>
+          ) : printersError ? (
+            <div className='bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 border border-red-200 dark:border-red-500 text-red-700 dark:text-red-300'>
+              {printersError}
+            </div>
+          ) : printers.length === 0 ? (
+            <div className='bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 text-gray-600 dark:text-gray-300'>
+              Принтеры не найдены. Добавьте профиль принтера для начала работы.
+            </div>
+          ) : (
+            <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'>
+              {printers.map(printer => (
+                <div
+                  key={printer.id}
+                  className='bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 border border-gray-200 dark:border-gray-700'
+                >
+                  <div className='flex items-start justify-between mb-4'>
+                    <div>
+                      <h3 className='text-lg font-semibold text-gray-900 dark:text-gray-100'>
+                        {printer.name}
+                      </h3>
+                      <p className='text-sm text-gray-600 dark:text-gray-300'>
+                        {printer.model}
+                      </p>
+                    </div>
                     <span
-                      className={`font-medium ${printer.errorCount > 5 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100'}`}
+                      className={`px-2 py-1 rounded text-xs ${getStatusColor(printer.status)}`}
                     >
-                      {printer.errorCount}
+                      {printer.status === 'online' && 'Онлайн'}
+                      {printer.status === 'offline' && 'Офлайн'}
+                      {printer.status === 'busy' && 'Занят'}
+                      {printer.status === 'error' && 'Ошибка'}
+                      {printer.status === 'maintenance' && 'Обслуживание'}
                     </span>
                   </div>
-                </div>
 
-                <div className='mt-4 space-y-2'>
-                  <div className='flex flex-wrap gap-1'>
-                    {printer.capabilities.slice(0, 3).map(capability => (
-                      <span
-                        key={capability}
-                        className='px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-xs rounded'
-                      >
-                        {capability}
+                  <div className='space-y-2 text-sm'>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-500 dark:text-gray-400'>
+                        Тип:
                       </span>
-                    ))}
+                      <span className='font-medium'>{printer.type}</span>
+                    </div>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-500 dark:text-gray-400'>
+                        Местоположение:
+                      </span>
+                      <span className='font-medium text-xs'>
+                        {printer.location}
+                      </span>
+                    </div>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-500 dark:text-gray-400'>
+                        IP:
+                      </span>
+                      <span className='font-medium font-mono text-xs'>
+                        {printer.ipAddress}
+                      </span>
+                    </div>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-500 dark:text-gray-400'>
+                        Разрешение:
+                      </span>
+                      <span className='font-medium'>{printer.resolution}</span>
+                    </div>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-500 dark:text-gray-400'>
+                        Заданий:
+                      </span>
+                      <span className='font-medium'>{printer.totalJobs}</span>
+                    </div>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-500 dark:text-gray-400'>
+                        Ошибок:
+                      </span>
+                      <span
+                        className={`font-medium ${printer.errorCount > 5 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100'}`}
+                      >
+                        {printer.errorCount}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className='mt-4 space-y-2'>
+                    <div className='flex flex-wrap gap-1'>
+                      {printer.capabilities.slice(0, 3).map(capability => (
+                        <span
+                          key={capability}
+                          className='px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-xs rounded'
+                        >
+                          {capability}
+                        </span>
+                      ))}
+                      {printer.capabilities.length === 0 && (
+                        <span className='text-xs text-gray-500 dark:text-gray-400'>
+                          Возможности не указаны
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className='mt-4 flex gap-2'>
+                    <button
+                      onClick={() => setSelectedPrinter(printer)}
+                      className='flex-1 bg-indigo-600 text-white px-3 py-1 rounded text-sm hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-800'
+                    >
+                      Настройки
+                    </button>
+                    <button className='px-3 py-1 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded text-sm hover:bg-gray-50 dark:hover:bg-gray-700'>
+                      Тест
+                    </button>
                   </div>
                 </div>
-
-                <div className='mt-4 flex gap-2'>
-                  <button
-                    onClick={() => setSelectedPrinter(printer)}
-                    className='flex-1 bg-indigo-600 text-white px-3 py-1 rounded text-sm hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-800'
-                  >
-                    Настройки
-                  </button>
-                  <button className='px-3 py-1 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded text-sm hover:bg-gray-50 dark:hover:bg-gray-700'>
-                    Тест
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -536,29 +645,47 @@ const Printing: React.FC = () => {
             Мониторинг системы печати
           </h2>
 
+          {printersLoading && (
+            <div className='bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 text-sm text-gray-600 dark:text-gray-300'>
+              Загрузка данных о принтерах...
+            </div>
+          )}
+
+          {printersError && !printersLoading && (
+            <div className='bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 border border-red-200 dark:border-red-500 text-sm text-red-700 dark:text-red-300'>
+              {printersError}
+            </div>
+          )}
+
           {/* Общая статистика */}
           <div className='grid grid-cols-1 md:grid-cols-4 gap-6'>
             {[
               {
                 title: 'Активных заданий',
-                value: printJobs.filter(j => j.status === 'printing').length,
+                value: printJobs.filter(job => job.status === 'printing')
+                  .length,
                 color: 'blue',
               },
               {
                 title: 'В очереди',
-                value: printJobs.filter(j => j.status === 'pending').length,
+                value: printJobs.filter(job => job.status === 'pending').length,
                 color: 'yellow',
               },
               {
                 title: 'Принтеров онлайн',
-                value: _printers.filter(
-                  p => p.status === 'online' || p.status === 'busy'
+                value: printers.filter(
+                  (printer: PrinterProfile) =>
+                    printer.status === 'online' || printer.status === 'busy'
                 ).length,
                 color: 'green',
               },
               {
                 title: 'Ошибок сегодня',
-                value: _printers.reduce((sum, p) => sum + p.errorCount, 0),
+                value: printers.reduce(
+                  (sum: number, printer: PrinterProfile) =>
+                    sum + printer.errorCount,
+                  0
+                ),
                 color: 'red',
               },
             ].map((stat, index) => (
@@ -572,7 +699,7 @@ const Printing: React.FC = () => {
                 <div
                   className={`text-3xl font-bold mt-2 text-${stat.color}-600`}
                 >
-                  {stat.value}
+                  {printersLoading ? '…' : stat.value}
                 </div>
               </div>
             ))}
@@ -583,51 +710,65 @@ const Printing: React.FC = () => {
             <h3 className='text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4'>
               Статус принтеров
             </h3>
-            <div className='space-y-4'>
-              {_printers.map(printer => (
-                <div
-                  key={printer.id}
-                  className='flex items-center justify-between p-4 border rounded-lg'
-                >
-                  <div className='flex items-center'>
-                    <div
-                      className={`w-3 h-3 rounded-full mr-3 ${
-                        printer.status === 'online'
-                          ? 'bg-green-500'
-                          : printer.status === 'busy'
-                            ? 'bg-blue-500'
+            {printersLoading ? (
+              <div className='text-sm text-gray-600 dark:text-gray-300'>
+                Обновляем информацию…
+              </div>
+            ) : printersError ? (
+              <div className='text-sm text-red-700 dark:text-red-300'>
+                {printersError}
+              </div>
+            ) : printers.length === 0 ? (
+              <div className='text-sm text-gray-600 dark:text-gray-300'>
+                Нет данных о принтерах.
+              </div>
+            ) : (
+              <div className='space-y-4'>
+                {printers.map(printer => (
+                  <div
+                    key={printer.id}
+                    className='flex items-center justify-between p-4 border rounded-lg'
+                  >
+                    <div className='flex items-center'>
+                      <div
+                        className={`w-3 h-3 rounded-full mr-3 ${
+                          printer.status === 'online'
+                            ? 'bg-green-500'
+                            : printer.status === 'busy'
+                              ? 'bg-blue-500'
+                              : printer.status === 'error'
+                                ? 'bg-red-500'
+                                : 'bg-gray-500'
+                        }`}
+                      ></div>
+                      <div>
+                        <div className='font-medium'>{printer.name}</div>
+                        <div className='text-sm text-gray-500'>
+                          {printer.location}
+                        </div>
+                      </div>
+                    </div>
+                    <div className='text-right'>
+                      <div className='text-sm font-medium'>
+                        {printer.status === 'busy'
+                          ? 'Печатает'
+                          : printer.status === 'online'
+                            ? 'Готов'
                             : printer.status === 'error'
-                              ? 'bg-red-500'
-                              : 'bg-gray-500'
-                      }`}
-                    ></div>
-                    <div>
-                      <div className='font-medium'>{printer.name}</div>
-                      <div className='text-sm text-gray-500'>
-                        {printer.location}
+                              ? 'Ошибка'
+                              : 'Офлайн'}
                       </div>
+                      {printer.lastJobTime && (
+                        <div className='text-xs text-gray-500'>
+                          Последнее:{' '}
+                          {new Date(printer.lastJobTime).toLocaleTimeString()}
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <div className='text-right'>
-                    <div className='text-sm font-medium'>
-                      {printer.status === 'busy'
-                        ? 'Печатает'
-                        : printer.status === 'online'
-                          ? 'Готов'
-                          : printer.status === 'error'
-                            ? 'Ошибка'
-                            : 'Офлайн'}
-                    </div>
-                    {printer.lastJobTime && (
-                      <div className='text-xs text-gray-500'>
-                        Последнее:{' '}
-                        {new Date(printer.lastJobTime).toLocaleTimeString()}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

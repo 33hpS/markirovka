@@ -1,33 +1,71 @@
 import * as React from 'react';
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 
-interface Product {
-  id: string;
+import {
+  CategoryManager,
+  type Category as CategoryType,
+} from '../components/product/CategoryManager';
+import { useRealtimeSync } from '../hooks/useRealtime';
+import * as api from '../services/apiService';
+import type {
+  Product as ApiProduct,
+  ProductPayload,
+} from '../services/apiService';
+
+type Product = Omit<
+  ApiProduct,
+  | 'category'
+  | 'manufacturer'
+  | 'weight'
+  | 'price'
+  | 'stock'
+  | 'minStock'
+  | 'status'
+> & {
+  category: string;
+  manufacturer: string;
+  weight: string;
+  price: number;
+  stock: number;
+  minStock: number;
+  status: ApiProduct['status'];
+};
+
+type NewProductState = {
   name: string;
   sku: string;
-  price: number;
   category: string;
+  categoryId: string | null;
+  categoryCode: string | null;
+  price: number;
   description: string;
   manufacturer: string;
   weight: string;
-  expiryDate?: string;
-  batchNumber?: string;
-  barcode: string; // Автоматически генерируемый штрих-код
-  qrData: string;
-  status: 'active' | 'inactive' | 'discontinued';
-  createdAt: string;
-  updatedAt: string;
-  imageUrl?: string;
+  status: Product['status'];
   stock: number;
   minStock: number;
-}
+  expiryDate?: string;
+  batchNumber?: string;
+  imageUrl?: string;
+};
 
-interface Category {
-  id: string;
-  name: string;
-  code: string;
-  description: string;
-}
+const initialNewProductState: NewProductState = {
+  name: '',
+  sku: '',
+  category: '',
+  categoryId: null,
+  categoryCode: null,
+  price: 0,
+  description: '',
+  manufacturer: '',
+  weight: '',
+  status: 'active',
+  stock: 0,
+  minStock: 10,
+};
+
+// Category типы импортируются из CategoryManager
+type Category = CategoryType;
 
 const categories: Category[] = [
   {
@@ -91,91 +129,236 @@ const generateBarcode = (
   return baseCode + checkDigit.toString();
 };
 
+// Функция генерации SKU на основе названия товара и категории
+const generateSKU = (productName: string, categoryCode: string): string => {
+  // Извлекаем ключевые слова из названия (первые 2-3 слова, до 8 символов)
+  const words = productName
+    .toUpperCase()
+    .replace(/[^А-ЯA-Z0-9\s]/g, '') // Удаляем спецсимволы
+    .split(/\s+/)
+    .filter(w => w.length > 2) // Только слова длиннее 2 букв
+    .slice(0, 2); // Берём первые 2 слова
+
+  // Транслитерация русских букв
+  const translitMap: Record<string, string> = {
+    А: 'A',
+    Б: 'B',
+    В: 'V',
+    Г: 'G',
+    Д: 'D',
+    Е: 'E',
+    Ё: 'E',
+    Ж: 'ZH',
+    З: 'Z',
+    И: 'I',
+    Й: 'Y',
+    К: 'K',
+    Л: 'L',
+    М: 'M',
+    Н: 'N',
+    О: 'O',
+    П: 'P',
+    Р: 'R',
+    С: 'S',
+    Т: 'T',
+    У: 'U',
+    Ф: 'F',
+    Х: 'H',
+    Ц: 'TS',
+    Ч: 'CH',
+    Ш: 'SH',
+    Щ: 'SCH',
+    Ы: 'Y',
+    Э: 'E',
+    Ю: 'YU',
+    Я: 'YA',
+  };
+
+  const translit = (text: string): string => {
+    return text
+      .split('')
+      .map(char => translitMap[char] ?? char)
+      .join('');
+  };
+
+  // Формируем префикс из слов (максимум 8 символов)
+  const prefix = words
+    .map(w => translit(w))
+    .join('')
+    .slice(0, 8);
+
+  // Добавляем код категории, timestamp и случайное число
+  const timestamp = Date.now().toString().slice(-4);
+  const random = Math.floor(Math.random() * 100)
+    .toString()
+    .padStart(2, '0');
+
+  return `${categoryCode}-${prefix || 'PROD'}-${timestamp}${random}`;
+};
+
 // Функция генерации QR-кода данных
 const generateQRData = (product: Partial<Product>): string => {
   const baseUrl = 'https://markirovka.sherhan1988hp.workers.dev/product';
   return `${baseUrl}/${product.sku}?name=${encodeURIComponent(product.name ?? '')}&category=${encodeURIComponent(product.category ?? '')}`;
 };
 
-const mockProducts: Product[] = [
-  {
-    id: '1',
-    name: 'Молоко цельное 3.2%',
-    sku: 'MILK-032-1L',
-    price: 89.9,
-    category: 'Молочные продукты',
-    description: 'Натуральное цельное молоко жирностью 3.2%',
-    manufacturer: 'ООО "Молочная ферма"',
-    weight: '1 л',
-    barcode: '4600134912345',
-    qrData: 'https://markirovka.sherhan1988hp.workers.dev/product/MILK-032-1L',
-    status: 'active',
-    createdAt: '2025-10-01T08:00:00',
-    updatedAt: '2025-10-04T12:30:00',
-    stock: 150,
-    minStock: 20,
-  },
-  {
-    id: '2',
-    name: 'Хлеб пшеничный нарезной',
-    sku: 'BREAD-WHT-500G',
-    price: 45.5,
-    category: 'Хлебобулочные изделия',
-    description: 'Свежий пшеничный хлеб, нарезанный ломтиками',
-    manufacturer: 'Хлебозавод №1',
-    weight: '500 г',
-    barcode: '4600334567890',
-    qrData:
-      'https://markirovka.sherhan1988hp.workers.dev/product/BREAD-WHT-500G',
-    status: 'active',
-    createdAt: '2025-10-02T06:00:00',
-    updatedAt: '2025-10-04T14:15:00',
-    stock: 85,
-    minStock: 15,
-  },
-  {
-    id: '3',
-    name: 'Колбаса вареная "Докторская"',
-    sku: 'SAUSAGE-DOC-300G',
-    price: 285.0,
-    category: 'Мясные изделия',
-    description: 'Классическая вареная колбаса по ГОСТу',
-    manufacturer: 'Мясоком бинат "Традиция"',
-    weight: '300 г',
-    barcode: '4600234789012',
-    qrData:
-      'https://markirovka.sherhan1988hp.workers.dev/product/SAUSAGE-DOC-300G',
-    status: 'active',
-    createdAt: '2025-10-01T10:00:00',
-    updatedAt: '2025-10-03T16:45:00',
-    stock: 45,
-    minStock: 10,
-  },
-];
+const normalizeProductRecord = (
+  product: ApiProduct,
+  categoryMap?: Map<string, Category>
+): Product => {
+  const categoryEntry =
+    product.categoryId && categoryMap
+      ? categoryMap.get(product.categoryId)
+      : undefined;
+  const categoryName = product.category ?? categoryEntry?.name ?? '';
+  const categoryCode = product.categoryCode ?? categoryEntry?.code ?? null;
+
+  return {
+    ...product,
+    category: categoryName,
+    categoryCode,
+    manufacturer: product.manufacturer ?? '',
+    weight: product.weight ?? '',
+    price: product.price ?? 0,
+    stock: product.stock ?? 0,
+    minStock: product.minStock ?? 0,
+    status: product.status ?? 'active',
+  } as Product;
+};
 
 const Products: React.FC = () => {
-  const [products, setProducts] = useState<Product[]>(mockProducts);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categoriesList, setCategoriesList] = useState<Category[]>(categories);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [showNewProduct, setShowNewProduct] = useState(false);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<
     'all' | 'active' | 'inactive' | 'discontinued'
   >('all');
+  const [loading, setLoading] = useState(false);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const categoriesMap = useMemo(() => {
+    return new Map(categoriesList.map(category => [category.id, category]));
+  }, [categoriesList]);
+
+  const buildPayloadFromProduct = useCallback(
+    (
+      product: Product,
+      overrides: Partial<Product> = {}
+    ): ProductPayload & {
+      name: string;
+      sku: string;
+      categoryId?: string | null;
+    } => {
+      const merged = { ...product, ...overrides };
+
+      return {
+        name: merged.name,
+        sku: merged.sku,
+        categoryId: merged.categoryId ?? null,
+        categoryName: merged.category,
+        categoryCode: merged.categoryCode ?? null,
+        price: merged.price,
+        description: merged.description,
+        manufacturer: merged.manufacturer,
+        weight: merged.weight,
+        status: merged.status,
+        stock: merged.stock,
+        minStock: merged.minStock,
+        barcode: merged.barcode,
+        qrData: merged.qrData,
+        unit: merged.unit ?? merged.weight ?? null,
+        imageUrl: merged.imageUrl ?? null,
+        expiryDate: merged.expiryDate ?? null,
+        batchNumber: merged.batchNumber ?? null,
+      };
+    },
+    []
+  );
+
+  const formatTimestamp = (value?: string | null) =>
+    value ? new Date(value).toLocaleString() : '—';
+
+  // Функция перезагрузки категорий
+  const reloadCategories = useCallback(async () => {
+    try {
+      const loadedCategories = await api.fetchCategories();
+      setCategoriesList(loadedCategories);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Ошибка перезагрузки категорий:', err);
+    }
+  }, []);
+
+  // Подключение realtime для автоматической синхронизации
+  const realtime = useRealtimeSync({
+    categories: true,
+    onCategoryChange: reloadCategories,
+  });
+
+  // Загрузка данных из API при монтировании
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadData = async () => {
+      if (!isMounted) return;
+      setLoading(true);
+      setError(null);
+
+      try {
+        await api.migrateLocalStorageData();
+
+        const loadedCategories = await api.fetchCategories();
+        if (!isMounted) return;
+        setCategoriesList(loadedCategories);
+
+        const categoryMap = new Map(
+          loadedCategories.map(category => [category.id, category])
+        );
+
+        const loadedProducts = await api.fetchProducts();
+        if (!isMounted) return;
+        const normalizedProducts = loadedProducts.map(product =>
+          normalizeProductRecord(product, categoryMap)
+        );
+        setProducts(normalizedProducts);
+      } catch (err) {
+        if (!isMounted) return;
+        const errorMessage =
+          err instanceof Error ? err.message : 'Ошибка загрузки данных';
+        setError(errorMessage);
+
+        const saved = localStorage.getItem('productCategories');
+        if (saved) {
+          try {
+            setCategoriesList(JSON.parse(saved));
+          } catch {
+            setCategoriesList(categories);
+          }
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+          setInitialLoadComplete(true);
+        }
+      }
+    };
+
+    void loadData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Форма нового товара
-  const [newProduct, setNewProduct] = useState<Partial<Product>>({
-    name: '',
-    sku: '',
-    price: 0,
-    category: '',
-    description: '',
-    manufacturer: '',
-    weight: '',
-    status: 'active',
-    stock: 0,
-    minStock: 10,
-  });
+  const [newProduct, setNewProduct] = useState<NewProductState>(
+    initialNewProductState
+  );
 
   const filteredProducts = products.filter(product => {
     const matchesSearch =
@@ -210,91 +393,202 @@ const Products: React.FC = () => {
     return { text: 'В наличии', color: 'text-green-600 dark:text-green-400' };
   };
 
-  const handleCreateProduct = () => {
+  const handleCreateProduct = async () => {
     if (!newProduct.name || !newProduct.sku || !newProduct.category) {
       alert('Заполните обязательные поля: название, артикул, категория');
       return;
     }
 
-    const category = categories.find(cat => cat.name === newProduct.category);
+    const categoryEntry = newProduct.categoryId
+      ? categoriesMap.get(newProduct.categoryId)
+      : categoriesList.find(cat => cat.name === newProduct.category);
+
+    if (!categoryEntry) {
+      alert('Выберите категорию из списка');
+      return;
+    }
+
     const productNumber = products.length + 1;
+    const categoryCode = categoryEntry.code ?? newProduct.categoryCode ?? '99';
+    const barcode = generateBarcode(categoryCode, productNumber);
+    const qrData = generateQRData({
+      ...newProduct,
+      category: newProduct.category,
+      sku: newProduct.sku,
+    });
 
-    const barcode = generateBarcode(category?.code ?? '99', productNumber);
-    const qrData = generateQRData(newProduct);
-
-    const product: Product = {
-      id: Date.now().toString(),
-      ...(newProduct as Required<
-        Omit<Product, 'id' | 'barcode' | 'qrData' | 'createdAt' | 'updatedAt'>
-      >),
+    const payload: ProductPayload & {
+      name: string;
+      sku: string;
+      categoryId?: string | null;
+    } = {
+      name: newProduct.name,
+      sku: newProduct.sku,
+      categoryId: categoryEntry.id,
+      categoryName: newProduct.category,
+      categoryCode,
+      price: newProduct.price,
+      description: newProduct.description,
+      manufacturer: newProduct.manufacturer,
+      weight: newProduct.weight,
+      status: newProduct.status,
+      stock: newProduct.stock,
+      minStock: newProduct.minStock,
       barcode,
       qrData,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      unit: newProduct.weight,
+      imageUrl: newProduct.imageUrl ?? null,
+      expiryDate: newProduct.expiryDate ?? null,
+      batchNumber: newProduct.batchNumber ?? null,
     };
 
-    setProducts([...products, product]);
-    setNewProduct({
-      name: '',
-      sku: '',
-      price: 0,
-      category: '',
-      description: '',
-      manufacturer: '',
-      weight: '',
-      status: 'active',
-      stock: 0,
-      minStock: 10,
-    });
-    setShowNewProduct(false);
-  };
-
-  const updateProductStatus = (
-    productId: string,
-    status: Product['status']
-  ) => {
-    setProducts(
-      products.map(product =>
-        product.id === productId
-          ? { ...product, status, updatedAt: new Date().toISOString() }
-          : product
-      )
-    );
-  };
-
-  const deleteProduct = (productId: string) => {
-    if (confirm('Вы уверены, что хотите удалить этот товар?')) {
-      setProducts(products.filter(product => product.id !== productId));
+    try {
+      const created = await api.createProduct(payload);
+      const normalized = normalizeProductRecord(created, categoriesMap);
+      setProducts(prev => [...prev, normalized]);
+      setNewProduct({ ...initialNewProductState });
+      setShowNewProduct(false);
+      setError(null);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Ошибка создания товара';
+      setError(message);
     }
   };
 
-  const regenerateBarcode = (productId: string) => {
+  const updateProductStatus = async (
+    productId: string,
+    status: Product['status']
+  ) => {
+    const target = products.find(product => product.id === productId);
+    if (!target) return;
+
+    try {
+      const payload = buildPayloadFromProduct(target, { status });
+      const updated = await api.updateProduct(productId, payload);
+      const normalized = normalizeProductRecord(updated, categoriesMap);
+      setProducts(prev =>
+        prev.map(product => (product.id === productId ? normalized : product))
+      );
+      if (selectedProduct?.id === productId) {
+        setSelectedProduct(normalized);
+      }
+      setError(null);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Ошибка обновления товара';
+      setError(message);
+    }
+  };
+
+  const deleteProduct = async (productId: string) => {
+    if (!confirm('Вы уверены, что хотите удалить этот товар?')) {
+      return;
+    }
+
+    try {
+      await api.deleteProduct(productId);
+      setProducts(prev => prev.filter(product => product.id !== productId));
+      if (selectedProduct?.id === productId) {
+        setSelectedProduct(null);
+      }
+      setError(null);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Ошибка удаления товара';
+      setError(message);
+    }
+  };
+
+  const regenerateBarcode = async (productId: string) => {
     const product = products.find(p => p.id === productId);
     if (!product) return;
 
-    const category = categories.find(cat => cat.name === product.category);
-    const productNumber = parseInt(product.id) || products.length;
-    const newBarcode = generateBarcode(category?.code ?? '99', productNumber);
+    const categoryCode =
+      product.categoryCode ??
+      (product.categoryId
+        ? categoriesMap.get(product.categoryId)?.code
+        : null) ??
+      '99';
+    const productIndex = products.findIndex(p => p.id === productId);
+    const productNumber =
+      productIndex >= 0 ? productIndex + 1 : products.length + 1;
+    const newBarcode = generateBarcode(categoryCode, productNumber);
 
-    setProducts(
-      products.map(p =>
-        p.id === productId
-          ? { ...p, barcode: newBarcode, updatedAt: new Date().toISOString() }
-          : p
-      )
-    );
+    try {
+      const payload = buildPayloadFromProduct(product, { barcode: newBarcode });
+      const updated = await api.updateProduct(productId, payload);
+      const normalized = normalizeProductRecord(updated, categoriesMap);
+      setProducts(prev => prev.map(p => (p.id === productId ? normalized : p)));
+      if (selectedProduct?.id === productId) {
+        setSelectedProduct(normalized);
+      }
+      setError(null);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Ошибка обновления штрих-кода';
+      setError(message);
+    }
   };
 
   return (
     <div className='p-6 bg-gray-50 dark:bg-gray-900 min-h-screen'>
-      <div className='mb-6'>
-        <h1 className='text-3xl font-bold text-gray-900 dark:text-gray-100'>
-          Управление товарами
-        </h1>
-        <p className='text-gray-600 dark:text-gray-300 mt-2'>
-          Каталог товаров с автоматической генерацией штрих-кодов и QR-кодов
-        </p>
+      <div className='mb-6 flex items-start justify-between'>
+        <div>
+          <h1 className='text-3xl font-bold text-gray-900 dark:text-gray-100'>
+            Управление товарами
+          </h1>
+          <p className='text-gray-600 dark:text-gray-300 mt-2'>
+            Каталог товаров с автоматической генерацией штрих-кодов и QR-кодов
+          </p>
+        </div>
+
+        {/* Realtime индикатор */}
+        {realtime.isConnected && (
+          <div className='flex items-center gap-2 text-sm'>
+            <div className='flex items-center gap-1.5'>
+              <div className='w-2 h-2 bg-green-500 rounded-full animate-pulse'></div>
+              <span className='text-gray-600 dark:text-gray-400'>
+                Синхронизация
+              </span>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Индикатор загрузки */}
+      {!initialLoadComplete && loading && (
+        <div className='bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6'>
+          <div className='flex items-center'>
+            <div className='animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 mr-3'></div>
+            <span className='text-blue-800 dark:text-blue-300'>
+              Загрузка данных из базы...
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Ошибка загрузки */}
+      {error && (
+        <div className='bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-6'>
+          <div className='flex items-center'>
+            <svg
+              className='w-5 h-5 text-red-600 mr-3'
+              fill='none'
+              stroke='currentColor'
+              viewBox='0 0 24 24'
+            >
+              <path
+                strokeLinecap='round'
+                strokeLinejoin='round'
+                strokeWidth={2}
+                d='M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+              />
+            </svg>
+            <span className='text-red-800 dark:text-red-300'>{error}</span>
+          </div>
+        </div>
+      )}
 
       {/* Панель поиска и фильтров */}
       <div className='bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6'>
@@ -309,7 +603,7 @@ const Products: React.FC = () => {
             <input
               id='product-search'
               type='text'
-              placeholder='Название, артикул, производитель...'
+              placeholder='Поиск товаров...'
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500'
@@ -329,7 +623,7 @@ const Products: React.FC = () => {
               className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500'
             >
               <option value='all'>Все категории</option>
-              {categories.map(category => (
+              {categoriesList.map(category => (
                 <option key={category.id} value={category.name}>
                   {category.name}
                 </option>
@@ -363,10 +657,16 @@ const Products: React.FC = () => {
               <option value='discontinued'>Снятые с производства</option>
             </select>
           </div>
-          <div className='flex items-end'>
+          <div className='flex items-end gap-2'>
+            <button
+              onClick={() => setShowCategoryManager(true)}
+              className='bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-800'
+            >
+              📁 Категории
+            </button>
             <button
               onClick={() => setShowNewProduct(true)}
-              className='w-full bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-800'
+              className='bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-800'
             >
               + Добавить товар
             </button>
@@ -581,7 +881,6 @@ const Products: React.FC = () => {
                       setNewProduct({ ...newProduct, name: e.target.value })
                     }
                     className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500'
-                    placeholder='Молоко цельное 3.2%'
                   />
                 </div>
 
@@ -592,16 +891,56 @@ const Products: React.FC = () => {
                   >
                     Артикул (SKU) *
                   </label>
-                  <input
-                    id='new-sku'
-                    type='text'
-                    value={newProduct.sku}
-                    onChange={e =>
-                      setNewProduct({ ...newProduct, sku: e.target.value })
-                    }
-                    className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500'
-                    placeholder='MILK-032-1L'
-                  />
+                  <div className='flex gap-2'>
+                    <input
+                      id='new-sku'
+                      type='text'
+                      value={newProduct.sku}
+                      onChange={e =>
+                        setNewProduct({ ...newProduct, sku: e.target.value })
+                      }
+                      className='flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500'
+                    />
+                    <button
+                      type='button'
+                      onClick={() => {
+                        if (!newProduct.name) {
+                          alert('Сначала введите название товара');
+                          return;
+                        }
+                        const category = categoriesList.find(
+                          c => c.name === newProduct.category
+                        );
+                        const categoryCode = category?.code ?? 'XX';
+                        const generatedSKU = generateSKU(
+                          newProduct.name,
+                          categoryCode
+                        );
+                        setNewProduct({ ...newProduct, sku: generatedSKU });
+                      }}
+                      className='px-3 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 flex items-center justify-center'
+                      title='Сгенерировать SKU автоматически на основе названия'
+                    >
+                      <svg
+                        className='w-5 h-5'
+                        fill='none'
+                        stroke='currentColor'
+                        viewBox='0 0 24 24'
+                      >
+                        <path
+                          strokeLinecap='round'
+                          strokeLinejoin='round'
+                          strokeWidth={2}
+                          d='M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15'
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className='mt-1 flex items-center gap-2'>
+                    <p className='text-xs text-gray-500 dark:text-gray-400'>
+                      💡 Нажмите 🔄 для автогенерации на основе названия
+                    </p>
+                  </div>
                 </div>
 
                 <div>
@@ -614,13 +953,34 @@ const Products: React.FC = () => {
                   <select
                     id='new-category'
                     value={newProduct.category}
-                    onChange={e =>
-                      setNewProduct({ ...newProduct, category: e.target.value })
-                    }
+                    onChange={e => {
+                      const newCategory = e.target.value;
+                      const categoryEntry = categoriesList.find(
+                        c => c.name === newCategory
+                      );
+                      setNewProduct(prev => {
+                        const baseState = {
+                          ...prev,
+                          category: newCategory,
+                          categoryId: categoryEntry?.id ?? null,
+                          categoryCode: categoryEntry?.code ?? null,
+                        } satisfies NewProductState;
+
+                        if (baseState.name && !baseState.sku) {
+                          const categoryCode = categoryEntry?.code ?? 'XX';
+                          return {
+                            ...baseState,
+                            sku: generateSKU(baseState.name, categoryCode),
+                          } satisfies NewProductState;
+                        }
+
+                        return baseState;
+                      });
+                    }}
                     className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500'
                   >
                     <option value=''>Выберите категорию</option>
-                    {categories.map(category => (
+                    {categoriesList.map(category => (
                       <option key={category.id} value={category.name}>
                         {category.name}
                       </option>
@@ -668,7 +1028,6 @@ const Products: React.FC = () => {
                       })
                     }
                     className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500'
-                    placeholder="ООО 'Молочная ферма'"
                   />
                 </div>
 
@@ -687,7 +1046,6 @@ const Products: React.FC = () => {
                       setNewProduct({ ...newProduct, weight: e.target.value })
                     }
                     className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500'
-                    placeholder='1 л'
                   />
                 </div>
 
@@ -752,7 +1110,6 @@ const Products: React.FC = () => {
                   }
                   rows={3}
                   className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500'
-                  placeholder='Описание товара...'
                 />
               </div>
 
@@ -834,11 +1191,11 @@ const Products: React.FC = () => {
                     </div>
                     <div>
                       <strong>Создан:</strong>{' '}
-                      {new Date(selectedProduct.createdAt).toLocaleString()}
+                      {formatTimestamp(selectedProduct.createdAt)}
                     </div>
                     <div>
                       <strong>Обновлен:</strong>{' '}
-                      {new Date(selectedProduct.updatedAt).toLocaleString()}
+                      {formatTimestamp(selectedProduct.updatedAt)}
                     </div>
                   </div>
                 </div>
@@ -919,6 +1276,70 @@ const Products: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Category Manager Modal */}
+      {showCategoryManager && (
+        <CategoryManager
+          categories={categoriesList}
+          onSave={async updatedCategories => {
+            try {
+              // Сохраняем через API
+              // Определяем какие категории новые, изменены или удалены
+              const existingIds = categoriesList.map(c => c.id);
+              const updatedIds = updatedCategories.map(c => c.id);
+
+              // Новые категории (id начинается с temp или нет в existing)
+              const newCategories = updatedCategories.filter(
+                c => !existingIds.includes(c.id) || c.id.startsWith('temp')
+              );
+
+              // Измененные категории
+              const changedCategories = updatedCategories.filter(
+                c => existingIds.includes(c.id) && !c.id.startsWith('temp')
+              );
+
+              // Удаленные категории
+              const deletedIds = existingIds.filter(
+                id => !updatedIds.includes(id)
+              );
+
+              // Создаем новые
+              for (const cat of newCategories) {
+                await api.createCategory({
+                  code: cat.code,
+                  name: cat.name,
+                  description: cat.description,
+                });
+              }
+
+              // Обновляем измененные
+              for (const cat of changedCategories) {
+                await api.updateCategory(cat.id, {
+                  code: cat.code,
+                  name: cat.name,
+                  description: cat.description,
+                });
+              }
+
+              // Удаляем
+              for (const id of deletedIds) {
+                await api.deleteCategory(id);
+              }
+
+              // Обновляем локальный список
+              const refreshed = await api.fetchCategories();
+              setCategoriesList(refreshed);
+            } catch (err) {
+              const errorMsg =
+                err instanceof Error ? err.message : 'Ошибка сохранения';
+              alert(`Ошибка: ${errorMsg}`);
+            }
+
+            setShowCategoryManager(false);
+          }}
+          onClose={() => setShowCategoryManager(false)}
+        />
       )}
     </div>
   );

@@ -49,6 +49,18 @@ body {
   text-align: inherit;
 }
 
+/* Prevent image flash/flicker on load */
+img[src^='/api/thumbnails/'],
+img[src^='data:image/'] {
+  opacity: 1;
+  transition: opacity 0.15s ease-in;
+}
+
+img[src^='/api/thumbnails/']:not([complete]),
+img[src^='data:image/']:not([complete]) {
+  opacity: 0;
+}
+
 a {
   font-weight: 500;
   @apply text-indigo-600 dark:text-indigo-400;

@@ -13,6 +13,7 @@ const App = React.lazy(() => import('./App'));
 const Docs = React.lazy(() => import('./pages/Docs'));
 const Production = React.lazy(() => import('./pages/Production'));
 const Designer = React.lazy(() => import('./pages/Designer'));
+const DesignerEditor = React.lazy(() => import('./pages/DesignerEditor'));
 const Reports = React.lazy(() => import('./pages/Reports'));
 const Users = React.lazy(() => import('./pages/Users'));
 const Printing = React.lazy(() => import('./pages/Printing'));
@@ -53,6 +54,7 @@ root.render(
                     <Route path='/users' element={<Users />} />
                   </Route>
                   <Route path='/designer' element={<Designer />} />
+                  <Route path='/designer/editor' element={<DesignerEditor />} />
                   <Route path='/labels' element={<Labels />} />
                   <Route path='/products' element={<Products />} />
                   <Route path='/line-operator' element={<LineOperator />} />

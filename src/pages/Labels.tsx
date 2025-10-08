@@ -1,6 +1,9 @@
 import * as React from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+
+import * as api from '../services/apiService';
+import type { LabelTemplate as ApiLabelTemplate } from '../services/apiService';
 
 interface LabelTemplate {
   id: string;
@@ -28,86 +31,10 @@ interface Product {
   sku: string;
 }
 
-const mockTemplates: LabelTemplate[] = [
-  {
-    id: '1',
-    name: 'Стандартная этикетка продукта',
-    description:
-      'Базовый шаблон для маркировки продукции с QR-кодом и основной информацией',
-    version: '2.1.0',
-    createdAt: '2025-09-15',
-    updatedAt: '2025-10-01',
-    author: 'Система',
-    category: 'Продукция',
-    tags: ['QR-код', 'Базовый', 'ГОСТ'],
-    products: ['Хлеб белый', 'Молоко 3.2%'],
-    dimensions: { width: 40, height: 30 },
-    preview: '🏷️',
-    isActive: true,
-    downloads: 156,
-  },
-  {
-    id: '2',
-    name: 'Экспортная этикетка',
-    description: 'Шаблон для экспортной продукции с многоязычными подписями',
-    version: '1.3.2',
-    createdAt: '2025-08-20',
-    updatedAt: '2025-09-28',
-    author: 'А. Петров',
-    category: 'Экспорт',
-    tags: ['Экспорт', 'Многоязычный', 'EU'],
-    products: ['Мёд липовый'],
-    dimensions: { width: 50, height: 40 },
-    preview: '🌍',
-    isActive: true,
-    downloads: 89,
-  },
-  {
-    id: '3',
-    name: 'Минимальная этикетка',
-    description: 'Компактный шаблон только с обязательной информацией',
-    version: '1.0.5',
-    createdAt: '2025-07-10',
-    updatedAt: '2025-09-15',
-    author: 'М. Сидорова',
-    category: 'Минимум',
-    tags: ['Компактный', 'Минимум'],
-    products: [],
-    dimensions: { width: 25, height: 15 },
-    preview: '📄',
-    isActive: false,
-    downloads: 34,
-  },
-  {
-    id: '4',
-    name: 'Премиум этикетка',
-    description:
-      'Роскошный дизайн для премиальной продукции с золотыми элементами',
-    version: '3.0.1',
-    createdAt: '2025-09-01',
-    updatedAt: '2025-10-03',
-    author: 'Дизайн-студия',
-    category: 'Премиум',
-    tags: ['Премиум', 'Золото', 'Роскошь'],
-    products: ['Икра черная', 'Коньяк XO'],
-    dimensions: { width: 60, height: 50 },
-    preview: '✨',
-    isActive: true,
-    downloads: 67,
-  },
-];
-
-const mockProducts: Product[] = [
-  { id: '1', name: 'Хлеб белый', sku: 'BREAD-001' },
-  { id: '2', name: 'Молоко 3.2%', sku: 'MILK-032' },
-  { id: '3', name: 'Мёд липовый', sku: 'HONEY-LIP' },
-  { id: '4', name: 'Икра черная', sku: 'CAVIAR-BLK' },
-  { id: '5', name: 'Коньяк XO', sku: 'COGNAC-XO' },
-  { id: '6', name: 'Сыр российский', sku: 'CHEESE-RUS' },
-];
-
 const Labels: React.FC = () => {
-  const [templates, setTemplates] = useState<LabelTemplate[]>(mockTemplates);
+  const [templates, setTemplates] = useState<LabelTemplate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedTemplate, setSelectedTemplate] =
@@ -116,6 +43,113 @@ const Labels: React.FC = () => {
   const [showProductBinding, setShowProductBinding] = useState<string | null>(
     null
   );
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [productsError, setProductsError] = useState<string | null>(null);
+
+  // Загружаем шаблоны из API
+  useEffect(() => {
+    const loadTemplates = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const loaded: ApiLabelTemplate[] = await api.fetchTemplates();
+        // Преобразуем формат из API в формат Labels
+        const formatted: LabelTemplate[] = loaded.map(template => {
+          const createdAtSource = template.created_at ?? null;
+          const updatedAtSource = template.updated_at ?? null;
+          const createdAt = createdAtSource
+            ? (new Date(createdAtSource).toISOString().split('T')[0] ?? '')
+            : (new Date().toISOString().split('T')[0] ?? '');
+          const updatedAt = updatedAtSource
+            ? (new Date(updatedAtSource).toISOString().split('T')[0] ?? '')
+            : (new Date().toISOString().split('T')[0] ?? '');
+
+          const metadataTags = template.metadata?.tags;
+          const tags = Array.isArray(metadataTags)
+            ? metadataTags.filter(
+                (tag): tag is string => typeof tag === 'string'
+              )
+            : [];
+
+          const suitableFor = template.metadata?.suitableFor;
+          const additionalTags = Array.isArray(suitableFor)
+            ? suitableFor.filter(
+                (tag): tag is string => typeof tag === 'string'
+              )
+            : [];
+
+          return {
+            id: template.id ?? '',
+            name: template.name ?? 'Без названия',
+            description: template.description ?? 'Шаблон этикетки',
+            version: (template.metadata?.version as string) ?? '1.0.0',
+            createdAt,
+            updatedAt,
+            author: (template.metadata?.author as string) ?? 'Система',
+            category: template.category ?? 'Продукция',
+            tags: [...tags, ...additionalTags],
+            products: [],
+            dimensions: {
+              width: template.width ?? 40,
+              height: template.height ?? 30,
+            },
+            preview: (template.thumbnail as string) ?? '🏷️',
+            isActive: template.metadata?.isActive !== false,
+            downloads:
+              typeof template.metadata?.downloads === 'number'
+                ? template.metadata?.downloads
+                : 0,
+          } satisfies LabelTemplate;
+        });
+        setTemplates(formatted);
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : 'Не удалось загрузить шаблоны'
+        );
+        setTemplates([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    void loadTemplates();
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadProducts = async () => {
+      setProductsLoading(true);
+      setProductsError(null);
+
+      try {
+        const list = await api.fetchProducts();
+        if (!isMounted) return;
+        const simplified = list.map(product => ({
+          id: product.id,
+          name: product.name,
+          sku: product.sku ?? '',
+        }));
+        setProducts(simplified);
+      } catch (err) {
+        if (!isMounted) return;
+        setProductsError(
+          err instanceof Error ? err.message : 'Не удалось загрузить продукты'
+        );
+        setProducts([]);
+      } finally {
+        if (isMounted) {
+          setProductsLoading(false);
+        }
+      }
+    };
+
+    void loadProducts();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const categories = [
     'all',
@@ -161,18 +195,18 @@ const Labels: React.FC = () => {
   const navigate = useNavigate();
 
   const editTemplate = (template: LabelTemplate) => {
-    // Сохраняем шаблон в localStorage для передачи в дизайнер
+    // Сохраняем шаблон в localStorage для передачи в редактор
     localStorage.setItem('editingTemplate', JSON.stringify(template));
-    // Переходим в дизайнер
-    navigate('/designer');
+    // Переходим сразу в интерактивный редактор
+    navigate('/designer/editor');
   };
 
   const handleCreateTemplate = () => {
     // Устанавливаем флаг для создания нового шаблона
     localStorage.setItem('createNewTemplate', 'true');
-    // Переходим в дизайнер без шаблона (с пустым холстом)
-    localStorage.removeItem('editingTemplate'); // Очищаем любой существующий шаблон
-    navigate('/designer');
+    // Переходим в интерактивный редактор без шаблона (с пустым холстом)
+    localStorage.removeItem('editingTemplate');
+    navigate('/designer/editor');
   };
 
   const toggleTemplateStatus = (id: string) => {
@@ -246,6 +280,24 @@ const Labels: React.FC = () => {
         </div>
       </div>
 
+      {/* Индикатор загрузки */}
+      {loading && (
+        <div className='bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6'>
+          <div className='flex items-center'>
+            <div className='animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 mr-3'></div>
+            <span className='text-blue-800 dark:text-blue-300'>
+              Загрузка шаблонов...
+            </span>
+          </div>
+        </div>
+      )}
+
+      {!loading && error && (
+        <div className='bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-6 text-sm text-red-700 dark:text-red-200'>
+          Не удалось загрузить шаблоны: {error}
+        </div>
+      )}
+
       {/* Сетка шаблонов */}
       <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'>
         {filteredTemplates.map(template => (
@@ -254,8 +306,20 @@ const Labels: React.FC = () => {
             className='bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden'
           >
             {/* Превью */}
-            <div className='h-32 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700 flex items-center justify-center text-4xl'>
-              {template.preview}
+            <div className='h-40 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700 flex items-center justify-center p-4'>
+              {template.preview.startsWith('data:') ||
+              template.preview.startsWith('http') ||
+              template.preview.startsWith('/api/') ? (
+                <img
+                  src={template.preview}
+                  alt={template.name}
+                  className='w-full h-full object-contain'
+                  loading='eager'
+                  decoding='async'
+                />
+              ) : (
+                <div className='text-4xl'>{template.preview}</div>
+              )}
             </div>
 
             {/* Информация */}
@@ -320,6 +384,13 @@ const Labels: React.FC = () => {
                   className='flex-1 bg-indigo-600 text-white px-3 py-1 rounded text-sm hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-800'
                 >
                   Открыть
+                </button>
+                <button
+                  onClick={() => editTemplate(template)}
+                  className='flex-1 md:flex-none bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700'
+                  title='Редактировать'
+                >
+                  Редактировать
                 </button>
                 <button
                   onClick={() =>
@@ -397,26 +468,51 @@ const Labels: React.FC = () => {
                     Привязка к продуктам
                   </div>
                   <div className='space-y-2'>
-                    {mockProducts.slice(0, 3).map(product => (
-                      <label
-                        key={product.id}
-                        className='flex items-center text-xs'
-                      >
-                        <input
-                          type='checkbox'
-                          defaultChecked={template.products.includes(
-                            product.name
-                          )}
-                          className='mr-2'
-                        />
-                        <span>
-                          {product.name} ({product.sku})
-                        </span>
-                      </label>
-                    ))}
-                    <button className='text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300'>
-                      Показать все продукты →
-                    </button>
+                    {productsLoading && (
+                      <div className='text-xs text-gray-600 dark:text-gray-400'>
+                        Загрузка списка продуктов...
+                      </div>
+                    )}
+
+                    {productsError && !productsLoading && (
+                      <div className='text-xs text-red-600 dark:text-red-400'>
+                        Не удалось загрузить продукты: {productsError}
+                      </div>
+                    )}
+
+                    {!productsLoading &&
+                      !productsError &&
+                      products.length === 0 && (
+                        <div className='text-xs text-gray-600 dark:text-gray-400'>
+                          Нет доступных продуктов для привязки
+                        </div>
+                      )}
+
+                    {!productsLoading &&
+                      products.slice(0, 3).map(product => (
+                        <label
+                          key={product.id}
+                          className='flex items-center text-xs'
+                        >
+                          <input
+                            type='checkbox'
+                            defaultChecked={template.products.includes(
+                              product.name
+                            )}
+                            className='mr-2'
+                            disabled
+                          />
+                          <span>
+                            {product.name} ({product.sku || 'SKU не задан'})
+                          </span>
+                        </label>
+                      ))}
+
+                    {!productsLoading && products.length > 3 && (
+                      <button className='text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300'>
+                        Показать все продукты →
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -471,8 +567,20 @@ const Labels: React.FC = () => {
 
                 <div>
                   <h3 className='text-lg font-semibold mb-3'>Превью</h3>
-                  <div className='h-48 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700 rounded flex items-center justify-center text-6xl'>
-                    {selectedTemplate.preview}
+                  <div className='h-48 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700 rounded flex items-center justify-center p-6'>
+                    {selectedTemplate.preview.startsWith('data:') ||
+                    selectedTemplate.preview.startsWith('http') ||
+                    selectedTemplate.preview.startsWith('/api/') ? (
+                      <img
+                        src={selectedTemplate.preview}
+                        alt={selectedTemplate.name}
+                        className='w-full h-full object-contain'
+                        loading='eager'
+                        decoding='async'
+                      />
+                    ) : (
+                      <div className='text-6xl'>{selectedTemplate.preview}</div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -535,7 +643,7 @@ const Labels: React.FC = () => {
         </div>
       )}
 
-      {filteredTemplates.length === 0 && (
+      {filteredTemplates.length === 0 && !loading && !error && (
         <div className='text-center py-12'>
           <div className='text-gray-400 dark:text-gray-500 text-6xl mb-4'>
             📄
