@@ -1,15 +1,24 @@
 # ✅ Realtime Migration Fixed
 
-## 🐛 Проблема решена
+## 🐛 Проблемы решены
 
-**Ошибка:**
+**Ошибка 1:**
 
 ```
 ERROR: 42710: relation "categories" is already member of publication "supabase_realtime"
 ```
 
-**Решение:** Добавлена логика удаления таблиц из publication перед повторным добавлением, что делает
-миграцию **идемпотентной**.
+**Ошибка 2:**
+
+```
+ERROR: 42601: syntax error at or near "EXISTS"
+LINE 13: ALTER PUBLICATION supabase_realtime DROP TABLE IF EXISTS categories;
+```
+
+**Решение:** Добавлена логика удаления таблиц из publication перед повторным добавлением через блок
+`DO $$ ... END $$` с обработкой исключений. PostgreSQL не поддерживает `IF EXISTS` в
+`ALTER PUBLICATION DROP TABLE`, поэтому используется `EXCEPTION WHEN OTHERS` для игнорирования
+ошибок.
 
 ---
 
@@ -30,7 +39,8 @@ DO $$
 BEGIN
   -- Удаляем таблицы из публикации если они уже есть
   BEGIN
-    ALTER PUBLICATION supabase_realtime DROP TABLE IF EXISTS categories;
+    ALTER PUBLICATION supabase_realtime DROP TABLE categories;
+    -- Без IF EXISTS - не поддерживается в ALTER PUBLICATION
   EXCEPTION WHEN OTHERS THEN NULL;
   END;
   -- ... для всех таблиц
