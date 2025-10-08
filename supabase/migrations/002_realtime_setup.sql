@@ -5,6 +5,36 @@
 -- 1. Включение Realtime для таблиц
 -- =====================================================
 
+-- Удаляем таблицы из публикации если они уже есть (игнорируем ошибки)
+DO $$ 
+BEGIN
+  -- Пытаемся удалить таблицы из публикации (если они там есть)
+  BEGIN
+    ALTER PUBLICATION supabase_realtime DROP TABLE IF EXISTS categories;
+  EXCEPTION WHEN OTHERS THEN NULL;
+  END;
+  
+  BEGIN
+    ALTER PUBLICATION supabase_realtime DROP TABLE IF EXISTS products;
+  EXCEPTION WHEN OTHERS THEN NULL;
+  END;
+  
+  BEGIN
+    ALTER PUBLICATION supabase_realtime DROP TABLE IF EXISTS label_templates;
+  EXCEPTION WHEN OTHERS THEN NULL;
+  END;
+  
+  BEGIN
+    ALTER PUBLICATION supabase_realtime DROP TABLE IF EXISTS batches;
+  EXCEPTION WHEN OTHERS THEN NULL;
+  END;
+  
+  BEGIN
+    ALTER PUBLICATION supabase_realtime DROP TABLE IF EXISTS production_logs;
+  EXCEPTION WHEN OTHERS THEN NULL;
+  END;
+END $$;
+
 -- Включаем публикацию изменений для всех таблиц
 ALTER PUBLICATION supabase_realtime ADD TABLE categories;
 ALTER PUBLICATION supabase_realtime ADD TABLE products;
