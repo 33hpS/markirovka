@@ -10,27 +10,27 @@ DO $$
 BEGIN
   -- Пытаемся удалить таблицы из публикации (если они там есть)
   BEGIN
-    ALTER PUBLICATION supabase_realtime DROP TABLE IF EXISTS categories;
+    ALTER PUBLICATION supabase_realtime DROP TABLE categories;
   EXCEPTION WHEN OTHERS THEN NULL;
   END;
   
   BEGIN
-    ALTER PUBLICATION supabase_realtime DROP TABLE IF EXISTS products;
+    ALTER PUBLICATION supabase_realtime DROP TABLE products;
   EXCEPTION WHEN OTHERS THEN NULL;
   END;
   
   BEGIN
-    ALTER PUBLICATION supabase_realtime DROP TABLE IF EXISTS label_templates;
+    ALTER PUBLICATION supabase_realtime DROP TABLE label_templates;
   EXCEPTION WHEN OTHERS THEN NULL;
   END;
   
   BEGIN
-    ALTER PUBLICATION supabase_realtime DROP TABLE IF EXISTS batches;
+    ALTER PUBLICATION supabase_realtime DROP TABLE batches;
   EXCEPTION WHEN OTHERS THEN NULL;
   END;
   
   BEGIN
-    ALTER PUBLICATION supabase_realtime DROP TABLE IF EXISTS production_logs;
+    ALTER PUBLICATION supabase_realtime DROP TABLE production_logs;
   EXCEPTION WHEN OTHERS THEN NULL;
   END;
 END $$;
