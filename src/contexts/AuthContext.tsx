@@ -9,12 +9,7 @@ import {
 } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { validateToken, decodeToken, type TokenPayload } from '../utils/jwt';
-import {
-  getStoredToken,
-  setStoredToken,
-  clearStoredToken,
-} from '../utils/storage';
+import { getSupabaseService, isSupabaseAvailable } from '../services/supabaseService';
 
 interface User {
   id: string;
@@ -41,103 +36,43 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Mock users database (в production это будет API запрос)
-const MOCK_USERS = [
-  {
-    id: '1',
-    email: 'admin@markirovka.ru',
-    password: 'admin123', // В production: bcrypt hash
-    firstName: 'Александр',
-    lastName: 'Петров',
-    role: 'admin' as const,
-    permissions: [
-      'users.manage',
-      'system.config',
-      'audit.view',
-      'production.manage',
-      'labels.manage',
-      'printing.manage',
-      'reports.view',
-    ],
-  },
-  {
-    id: '2',
-    email: 'manager@markirovka.ru',
-    password: 'manager123',
-    firstName: 'Мария',
-    lastName: 'Сидорова',
-    role: 'manager' as const,
-    permissions: [
-      'production.manage',
-      'labels.create',
-      'printing.manage',
-      'reports.view',
-      'users.view',
-    ],
-  },
-  {
-    id: '3',
-    email: 'worker@markirovka.ru',
-    password: 'worker123',
-    firstName: 'Иван',
-    lastName: 'Козлов',
-    role: 'worker' as const,
-    permissions: ['labels.view', 'printing.basic', 'production.view'],
-  },
-];
-
-// Mock JWT generation (в production используйте настоящий JWT backend)
-function generateMockToken(user: (typeof MOCK_USERS)[0]): string {
-  const payload: TokenPayload = {
-    userId: user.id,
-    email: user.email,
-    role: user.role,
-    iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + 60 * 60 * 8, // 8 hours
-  };
-
-  // В production это должен делать backend с настоящей подписью
-  return `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${btoa(JSON.stringify(payload))}.mock_signature_${user.id}`;
-}
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
 
-  // Initialize auth state from stored token
+  // Initialize auth state from Supabase session
   useEffect(() => {
     const initAuth = async () => {
-      const storedToken = getStoredToken();
-
-      if (storedToken) {
-        const isValid = validateToken(storedToken);
-
-        if (isValid) {
-          const decoded = decodeToken(storedToken);
-          if (decoded) {
-            // В production: API запрос для получения актуальных данных пользователя
-            const mockUser = MOCK_USERS.find(u => u.id === decoded.userId);
-            if (mockUser) {
-              setUser({
-                id: mockUser.id,
-                email: mockUser.email,
-                firstName: mockUser.firstName,
-                lastName: mockUser.lastName,
-                role: mockUser.role,
-                permissions: mockUser.permissions,
-              });
-              setToken(storedToken);
-            }
-          }
-        } else {
-          // Token expired or invalid
-          clearStoredToken();
-        }
+      if (!isSupabaseAvailable) {
+        setIsLoading(false);
+        return;
       }
 
-      setIsLoading(false);
+      try {
+        const supabase = getSupabaseService();
+        const currentUser = await supabase.getCurrentUser();
+        
+        if (currentUser) {
+          // TODO: Fetch user profile from database to get role and permissions
+          // For now, set basic user data
+          setUser({
+            id: currentUser.id,
+            email: currentUser.email ?? '',
+            firstName: currentUser.user_metadata?.firstName ?? '',
+            lastName: currentUser.user_metadata?.lastName ?? '',
+            role: currentUser.user_metadata?.role ?? 'worker',
+            permissions: currentUser.user_metadata?.permissions ?? [],
+          });
+          setToken(currentUser.id); // Using user ID as token placeholder
+        }
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('Error initializing auth:', error);
+      } finally {
+        setIsLoading(false);
+      }
     };
 
     initAuth();
@@ -151,45 +86,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         setIsLoading(true);
 
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        // В production: API запрос к /api/auth/login
-        const mockUser = MOCK_USERS.find(
-          u => u.email === email && u.password === password
-        );
-
-        if (!mockUser) {
+        if (!isSupabaseAvailable) {
           return {
             success: false,
-            error: 'Неверный email или пароль',
+            error: 'Supabase не настроен. Проверьте конфигурацию.',
           };
         }
 
-        // Generate token (в production это делает backend)
-        const newToken = generateMockToken(mockUser);
+        const supabase = getSupabaseService();
+        const data = await supabase.signIn(email, password);
 
-        // Store token
-        setStoredToken(newToken);
+        if (data.user) {
+          // TODO: Fetch user profile from database to get role and permissions
+          const userData: User = {
+            id: data.user.id,
+            email: data.user.email ?? '',
+            firstName: data.user.user_metadata?.firstName ?? '',
+            lastName: data.user.user_metadata?.lastName ?? '',
+            role: data.user.user_metadata?.role ?? 'worker',
+            permissions: data.user.user_metadata?.permissions ?? [],
+          };
 
-        // Set user state
-        const userData: User = {
-          id: mockUser.id,
-          email: mockUser.email,
-          firstName: mockUser.firstName,
-          lastName: mockUser.lastName,
-          role: mockUser.role,
-          permissions: mockUser.permissions,
-        };
+          setUser(userData);
+          setToken(data.session?.access_token || null);
 
-        setUser(userData);
-        setToken(newToken);
+          return { success: true };
+        }
 
-        return { success: true };
-      } catch {
         return {
           success: false,
-          error: 'Произошла ошибка при входе',
+          error: 'Не удалось войти в систему',
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Произошла ошибка при входе',
         };
       } finally {
         setIsLoading(false);
@@ -198,15 +129,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
-  const logout = useCallback(() => {
-    // В production: API запрос к /api/auth/logout для инвалидации токена
-    clearStoredToken();
-    setUser(null);
-    setToken(null);
-    // Используем setTimeout чтобы состояние успело обновиться
-    setTimeout(() => {
-      navigate('/login', { replace: true });
-    }, 0);
+  const logout = useCallback(async () => {
+    try {
+      if (isSupabaseAvailable) {
+        const supabase = getSupabaseService();
+        await supabase.signOut();
+      }
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Error signing out:', error);
+    } finally {
+      setUser(null);
+      setToken(null);
+      setTimeout(() => {
+        navigate('/login', { replace: true });
+      }, 0);
+    }
   }, [navigate]);
 
   const hasPermission = useCallback(

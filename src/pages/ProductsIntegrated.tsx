@@ -144,30 +144,9 @@ const ProductsPage: React.FC = () => {
       setError(null);
       const data = await dataService.getProducts();
       setProducts(data);
-    } catch {
-      setError('Ошибка загрузки товаров. Используются тестовые данные.');
-      // Fallback к тестовым данным
-      setProducts([
-        {
-          id: '1',
-          name: 'Молоко 3.2%',
-          sku: 'MILK-032-1L',
-          category: 'Молочные продукты',
-          description: 'Пастеризованное молоко 3.2% жирности',
-          price: 89.99,
-          barcode: '4607023123456',
-          qr_data: 'MILK-032-1L-2025',
-          manufacturer: 'Молочный завод №1',
-          weight: '1000г',
-          dimensions: '10x6x20см',
-          expiration_days: 5,
-          status: 'active' as const,
-          stock: 100,
-          min_stock: 10,
-          created_at: new Date(),
-          updated_at: new Date(),
-        },
-      ]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка загрузки товаров');
+      setProducts([]);
     } finally {
       setLoading(false);
     }

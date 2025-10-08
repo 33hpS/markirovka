@@ -32,81 +32,9 @@ interface LabelTemplate {
   updatedAt?: string | undefined;
 }
 
-// Готовые шаблоны этикеток (сокращенный список для примера)
-const defaultTemplates: LabelTemplate[] = [
-  {
-    id: 'dairy-basic',
-    name: 'Молочные продукты - Базовый',
-    category: 'Молочные продукты',
-    description: 'Простая этикетка для молочных продуктов',
-    version: '2.1.0',
-    suitableFor: ['Молочные продукты'],
-    thumbnail: '🥛',
-    createdAt: '2025-01-15',
-    elements: [
-      {
-        id: '1',
-        type: 'text',
-        content: 'Название',
-        dataBinding: 'name',
-        x: 10,
-        y: 10,
-        width: 200,
-        height: 25,
-        fontSize: 16,
-        color: '#1a365d',
-      },
-      {
-        id: '2',
-        type: 'qr',
-        content: 'QR',
-        dataBinding: 'qrData',
-        x: 220,
-        y: 10,
-        width: 80,
-        height: 80,
-      },
-    ],
-  },
-  {
-    id: 'bakery-basic',
-    name: 'Хлебобулочные изделия - Базовый',
-    category: 'Хлебобулочные изделия',
-    description: 'Стандартная этикетка для хлеба',
-    version: '1.5.0',
-    suitableFor: ['Хлебобулочные изделия'],
-    thumbnail: '🍞',
-    createdAt: '2025-01-20',
-    elements: [
-      {
-        id: '1',
-        type: 'text',
-        content: 'Название',
-        dataBinding: 'name',
-        x: 10,
-        y: 10,
-        width: 200,
-        height: 24,
-        fontSize: 15,
-        color: '#744210',
-      },
-      {
-        id: '2',
-        type: 'barcode',
-        content: 'Штрих-код',
-        dataBinding: 'barcode',
-        x: 10,
-        y: 105,
-        width: 190,
-        height: 45,
-      },
-    ],
-  },
-];
-
 const Designer: React.FC = () => {
   const navigate = useNavigate();
-  const [templates, setTemplates] = useState<LabelTemplate[]>(defaultTemplates);
+  const [templates, setTemplates] = useState<LabelTemplate[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(
@@ -140,7 +68,7 @@ const Designer: React.FC = () => {
         createdAt: t.created_at?.split('T')[0],
         updatedAt: t.updated_at?.split('T')[0],
       }));
-      setTemplates(converted.length > 0 ? converted : defaultTemplates);
+      setTemplates(converted);
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('Ошибка перезагрузки шаблонов:', err);
@@ -176,13 +104,12 @@ const Designer: React.FC = () => {
           updatedAt: t.updated_at?.split('T')[0],
         }));
 
-        setTemplates(converted.length > 0 ? converted : defaultTemplates);
+        setTemplates(converted);
       } catch (err) {
         const errorMsg =
           err instanceof Error ? err.message : 'Ошибка загрузки шаблонов';
         setError(errorMsg);
-        // Fallback на дефолтные шаблоны
-        setTemplates(defaultTemplates);
+        setTemplates([]);
       } finally {
         setLoading(false);
       }
