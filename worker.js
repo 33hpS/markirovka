@@ -814,6 +814,77 @@ export default {
         }
       }
 
+      // =====================================================
+      // API Endpoints: Printers
+      // =====================================================
+
+      // GET /api/printers - Получить список принтеров
+      if (url.pathname === '/api/printers' && request.method === 'GET') {
+        try {
+          // Пока возвращаем пустой массив
+          // В будущем здесь будет запрос к таблице printers
+          const printers = [];
+
+          return new Response(JSON.stringify(printers), {
+            status: 200,
+            headers: { 'content-type': 'application/json', ...corsHeaders },
+          });
+        } catch (err) {
+          return new Response(JSON.stringify({ error: err.message }), {
+            status: 500,
+            headers: { 'content-type': 'application/json', ...corsHeaders },
+          });
+        }
+      }
+
+      // POST /api/printers - Добавить принтер
+      if (url.pathname === '/api/printers' && request.method === 'POST') {
+        try {
+          const body = await request.json();
+
+          // TODO: Сохранить принтер в базу данных
+          // Пока просто возвращаем то, что получили с добавлением id
+          const newPrinter = {
+            id: crypto.randomUUID(),
+            ...body,
+            createdAt: new Date().toISOString(),
+          };
+
+          return new Response(JSON.stringify(newPrinter), {
+            status: 201,
+            headers: { 'content-type': 'application/json', ...corsHeaders },
+          });
+        } catch (err) {
+          return new Response(JSON.stringify({ error: err.message }), {
+            status: 500,
+            headers: { 'content-type': 'application/json', ...corsHeaders },
+          });
+        }
+      }
+
+      // DELETE /api/printers/:id - Удалить принтер
+      if (
+        url.pathname.match(/^\/api\/printers\/[^/]+$/) &&
+        request.method === 'DELETE'
+      ) {
+        try {
+          const id = url.pathname.split('/').pop();
+
+          // TODO: Удалить принтер из базы данных
+          // Пока просто возвращаем success
+
+          return new Response(JSON.stringify({ success: true }), {
+            status: 200,
+            headers: { 'content-type': 'application/json', ...corsHeaders },
+          });
+        } catch (err) {
+          return new Response(JSON.stringify({ error: err.message }), {
+            status: 500,
+            headers: { 'content-type': 'application/json', ...corsHeaders },
+          });
+        }
+      }
+
       // API: R2 upload via Worker (avoid exposing R2 keys on frontend)
       if (url.pathname === '/api/r2/upload' && request.method === 'POST') {
         if (!env.R2) {
