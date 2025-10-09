@@ -4,19 +4,11 @@
  */
 
 import {
-  createClient,
   RealtimeChannel,
   RealtimePostgresChangesPayload,
 } from '@supabase/supabase-js';
 
-// Получаем конфигурацию из переменных окружения или используем дефолтные
-const SUPABASE_URL =
-  import.meta.env.VITE_SUPABASE_URL ??
-  'https://wjclhytzewfcalyyhbab.supabase.co';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
-
-// Создаем Supabase клиент
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+import { supabase } from '../lib/supabase';
 
 export interface RealtimeSubscription {
   channel: RealtimeChannel;

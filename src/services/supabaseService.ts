@@ -1,6 +1,7 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { type SupabaseClient } from '@supabase/supabase-js';
 
 import { supabaseConfig } from '../config/config';
+import { supabase as supabaseClient } from '../lib/supabase';
 
 // Типы для базы данных
 export interface DatabaseProduct {
@@ -401,10 +402,7 @@ export function getSupabaseService(): SupabaseService {
     );
   }
 
-  if (!instance) {
-    const client = createClient(supabaseConfig.url, supabaseConfig.anonKey);
-    instance = new SupabaseService(client);
-  }
+  instance ??= new SupabaseService(supabaseClient);
 
   return instance;
 }
